@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
-# Open Discord Bridge — installer for the local MVP test rig.
+# Open Discord Bridge — installer for the local test setup.
 #
-# Builds the bridge binary, creates an isolated Factorio mods directory containing
-# only the companion mod (so the test boots fast, ignoring your full mod pack), and
-# generates bridge.yaml + .env pre-filled with the right paths for this machine.
+# Builds the bridge binary, links the companion mod into your Factorio mods dir, and
+# generates bridge.yaml + .env + server-settings.json. The server runs against your
+# real ~/factorio data dir (full mod pack, saves in ~/factorio/saves).
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")" && pwd)"
-RUN_DIR="$REPO/.run"
-RUN_MODS="$RUN_DIR/mods"
 FACTORIO_DATA="$HOME/factorio"                 # write-data dir (see config-path.cfg)
+SETTINGS="$FACTORIO_DATA/server-settings.json"
 # Written into bridge.yaml as a literal ${HOME}/... — the bridge expands it at runtime,
 # so the config stays portable and free of an absolute home path.
 EVENTS_FILE='${HOME}/factorio/script-output/open-discord-bridge/events.jsonl'
@@ -27,32 +26,15 @@ echo "Building bridge with $GO_BIN ..."
 ( cd "$REPO/bridge" && "$GO_BIN" build -o odb-bridge ./cmd/bridge )
 echo "  -> $REPO/bridge/odb-bridge"
 
-# ─── 2. Isolated mods directory with just the companion mod ──────────────────
-NAME=$(grep -o '"name": *"[^"]*"' "$REPO/companion-mod/info.json" | head -1 | sed 's/.*"\([^"]*\)"/\1/')
-VERSION=$(grep -o '"version": *"[^"]*"' "$REPO/companion-mod/info.json" | head -1 | sed 's/.*"\([^"]*\)"/\1/')
-LINK_NAME="${NAME}_${VERSION}"
+# ─── 2. Link the companion mod into your Factorio mods dir ───────────────────
+# Uses the mod's own link script (symlinks into ~/factorio/mods and ~/.factorio/mods,
+# removing only stale links/zips of THIS mod). Your other mods and mod-list.json are
+# left untouched; Factorio enables the newly-found companion mod by default.
+"$REPO/companion-mod/link-mod.sh"
 
-mkdir -p "$RUN_MODS"
-# Refresh the symlink to the companion mod.
-for old in "$RUN_MODS/${NAME}_"*; do
-    [[ -L "$old" ]] && rm "$old"
-done
-ln -s "$REPO/companion-mod" "$RUN_MODS/$LINK_NAME"
-echo "Linked mod: $RUN_MODS/$LINK_NAME -> $REPO/companion-mod"
-
-# Factorio reads mods enabled-state from mod-list.json; create one enabling base + ours.
-cat > "$RUN_MODS/mod-list.json" <<EOF
-{
-  "mods": [
-    { "name": "base", "enabled": true },
-    { "name": "$NAME", "enabled": true }
-  ]
-}
-EOF
-
-# ─── 3. Minimal server settings (local, no login required) ───────────────────
-mkdir -p "$RUN_DIR"
-cat > "$RUN_DIR/server-settings.json" <<'EOF'
+# ─── 3. Minimal server settings (local, LAN, no login required) ──────────────
+if [[ ! -f "$SETTINGS" ]]; then
+    cat > "$SETTINGS" <<'EOF'
 {
   "name": "Open Discord Bridge MVP",
   "description": "Local bridge test server",
@@ -62,7 +44,10 @@ cat > "$RUN_DIR/server-settings.json" <<'EOF'
   "auto_pause": false
 }
 EOF
-echo "Wrote $RUN_DIR/server-settings.json"
+    echo "Wrote $SETTINGS"
+else
+    echo "Kept existing $SETTINGS"
+fi
 
 # ─── 4. Bridge config + env (only create if missing) ─────────────────────────
 if [[ ! -f "$REPO/bridge/.env" ]]; then
@@ -87,7 +72,11 @@ fi
 
 cat <<'EOF'
 
-Install complete.
+Install complete. The server runs against ~/factorio (full mod pack); saves go to
+~/factorio/saves/odb-test.zip.
+
+To also test the MTS integration, link your MTS checkout into the same mods dir:
+  ( cd ~/src/multi-team-support && ./link-mod.sh )
 
 ────────────────────────────────────────────────────────────────────────────
 Discord bot setup
