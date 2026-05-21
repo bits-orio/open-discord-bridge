@@ -101,10 +101,37 @@ func main() {
 
 	// Open Control API (off by default).
 	if cfg.ControlAPI.Enabled {
-		statusFn := func() controlapi.Status {
-			return buildStatus(cfg, dc, rc, lastEvent.Load())
+		deps := controlapi.Deps{
+			Status: func() controlapi.Status {
+				return buildStatus(cfg, dc, rc, lastEvent.Load())
+			},
+			Guilds: func() ([]controlapi.Guild, error) {
+				gs, err := dc.Guilds()
+				if err != nil {
+					return nil, err
+				}
+				out := make([]controlapi.Guild, len(gs))
+				for i, g := range gs {
+					out[i] = controlapi.Guild{ID: g.ID, Name: g.Name}
+				}
+				return out, nil
+			},
+			Channels: func(guildID string) ([]controlapi.Channel, error) {
+				chs, err := dc.Channels(guildID)
+				if err != nil {
+					return nil, err
+				}
+				out := make([]controlapi.Channel, len(chs))
+				for i, ch := range chs {
+					out[i] = controlapi.Channel{ID: ch.ID, Name: ch.Name, Type: ch.Type}
+				}
+				return out, nil
+			},
+			Test: func() controlapi.TestResult {
+				return roundTrip(dc, rc, rt.InboundChannels())
+			},
 		}
-		srv := controlapi.New(cfg.ControlAPI.Listen, cfg.ControlAPI.AuthToken, statusFn)
+		srv := controlapi.New(cfg.ControlAPI.Listen, cfg.ControlAPI.AuthToken, deps)
 		go func() {
 			if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
 				log.Printf("controlapi: %v", err)
@@ -127,6 +154,34 @@ func queryModVersion(rc *rcon.Client) string {
 	}
 	_ = json.Unmarshal([]byte(resp), &ms)
 	return ms.ModVersion
+}
+
+// roundTrip backs POST /v1/test: post a message to each bridged channel (outbound)
+// and inject one into the game over RCON (inbound).
+func roundTrip(dc *discord.Client, rc *rcon.Client, channels []string) controlapi.TestResult {
+	var res controlapi.TestResult
+
+	var sendErr error
+	for _, ch := range channels {
+		if err := dc.Post(ch, ":satellite: Open Discord Bridge — round-trip test"); err != nil {
+			sendErr = err
+		}
+	}
+	res.OutboundOK = sendErr == nil
+
+	payload, _ := json.Marshal(map[string]string{
+		"user":    "Bridge Test",
+		"message": "round-trip test",
+	})
+	if _, err := rc.Execute("/odb-incoming " + string(payload)); err != nil {
+		res.Error = err.Error()
+	} else {
+		res.InboundOK = true
+	}
+	if sendErr != nil && res.Error == "" {
+		res.Error = sendErr.Error()
+	}
+	return res
 }
 
 // buildStatus assembles a live GET /v1/status snapshot.

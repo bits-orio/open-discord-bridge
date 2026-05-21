@@ -47,11 +47,55 @@ func (c *Client) Close() error {
 // Connected reports whether the gateway connection is currently open.
 func (c *Client) Connected() bool { return c.connected }
 
-// Send posts a plain message to a channel.
+// Post sends a message and returns any error.
+func (c *Client) Post(channelID, content string) error {
+	_, err := c.session.ChannelMessageSend(channelID, content)
+	return err
+}
+
+// Send is fire-and-forget (logs on failure) for the event relay path.
 func (c *Client) Send(channelID, content string) {
-	if _, err := c.session.ChannelMessageSend(channelID, content); err != nil {
+	if err := c.Post(channelID, content); err != nil {
 		fmt.Printf("discord: send to %s failed: %v\n", channelID, err)
 	}
+}
+
+// GuildInfo / ChannelInfo are lightweight projections for the Control API proxy.
+type GuildInfo struct {
+	ID   string
+	Name string
+}
+
+type ChannelInfo struct {
+	ID   string
+	Name string
+	Type int
+}
+
+// Guilds lists the guilds the bot is a member of.
+func (c *Client) Guilds() ([]GuildInfo, error) {
+	gs, err := c.session.UserGuilds(100, "", "", false)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]GuildInfo, 0, len(gs))
+	for _, g := range gs {
+		out = append(out, GuildInfo{ID: g.ID, Name: g.Name})
+	}
+	return out, nil
+}
+
+// Channels lists the channels in a guild.
+func (c *Client) Channels(guildID string) ([]ChannelInfo, error) {
+	chs, err := c.session.GuildChannels(guildID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]ChannelInfo, 0, len(chs))
+	for _, ch := range chs {
+		out = append(out, ChannelInfo{ID: ch.ID, Name: ch.Name, Type: int(ch.Type)})
+	}
+	return out, nil
 }
 
 func (c *Client) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate) {

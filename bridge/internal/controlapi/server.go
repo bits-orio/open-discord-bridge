@@ -35,34 +35,55 @@ type FactorioStatus struct {
 	Error              string          `json:"error,omitempty"`
 }
 
-// Server is the HTTP Control API. StatusFn supplies a fresh snapshot per request.
+type Guild struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type Channel struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Type int    `json:"type"`
+}
+
+type TestResult struct {
+	OutboundOK bool   `json:"outbound_ok"`
+	InboundOK  bool   `json:"inbound_ok"`
+	Error      string `json:"error,omitempty"`
+}
+
+// Deps are the bridge capabilities the API exposes. A nil func means the corresponding
+// endpoint reports 501 (Not Implemented).
+type Deps struct {
+	Status   func() Status
+	Guilds   func() ([]Guild, error)
+	Channels func(guildID string) ([]Channel, error)
+	Test     func() TestResult
+}
+
 type Server struct {
-	listen   string
-	token    string
-	statusFn func() Status
-	srv      *http.Server
+	listen string
+	token  string
+	deps   Deps
+	srv    *http.Server
 }
 
-func New(listen, token string, statusFn func() Status) *Server {
-	return &Server{listen: listen, token: token, statusFn: statusFn}
+func New(listen, token string, deps Deps) *Server {
+	return &Server{listen: listen, token: token, deps: deps}
 }
 
-// Start serves until ctx is cancelled. Returns the listener error (http.ErrServerClosed
-// on clean shutdown).
+// Start serves until ctx is cancelled (returns http.ErrServerClosed on clean shutdown).
 func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/status", s.auth(s.handleStatus))
+	mux.HandleFunc("/v1/discord/guilds", s.auth(s.handleGuilds))
+	mux.HandleFunc("/v1/discord/channels", s.auth(s.handleChannels))
+	mux.HandleFunc("/v1/test", s.auth(s.handleTest))
 	// Documented in the spec; implemented in a later phase.
-	for _, p := range []string{"/v1/config", "/v1/restart", "/v1/test", "/v1/discord/guilds", "/v1/discord/channels"} {
-		mux.HandleFunc(p, s.auth(s.notImplemented))
-	}
+	mux.HandleFunc("/v1/config", s.auth(s.notImplemented))
+	mux.HandleFunc("/v1/restart", s.auth(s.notImplemented))
 
-	s.srv = &http.Server{
-		Addr:              s.listen,
-		Handler:           mux,
-		ReadHeaderTimeout: 5 * time.Second,
-	}
-
+	s.srv = &http.Server{Addr: s.listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -74,12 +95,11 @@ func (s *Server) Start(ctx context.Context) error {
 	return s.srv.ListenAndServe()
 }
 
-// auth enforces a constant-time bearer-token check.
 func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		got := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 		if subtle.ConstantTimeCompare([]byte(got), []byte(s.token)) != 1 {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			writeJSON(w, http.StatusUnauthorized, errBody("unauthorized"))
 			return
 		}
 		next(w, r)
@@ -88,15 +108,68 @@ func (s *Server) auth(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
 		return
 	}
-	writeJSON(w, http.StatusOK, s.statusFn())
+	writeJSON(w, http.StatusOK, s.deps.Status())
+}
+
+func (s *Server) handleGuilds(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
+		return
+	}
+	if s.deps.Guilds == nil {
+		s.notImplemented(w, r)
+		return
+	}
+	guilds, err := s.deps.Guilds()
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errBody(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, guilds)
+}
+
+func (s *Server) handleChannels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
+		return
+	}
+	if s.deps.Channels == nil {
+		s.notImplemented(w, r)
+		return
+	}
+	guildID := r.URL.Query().Get("guild_id")
+	if guildID == "" {
+		writeJSON(w, http.StatusBadRequest, errBody("guild_id query parameter is required"))
+		return
+	}
+	channels, err := s.deps.Channels(guildID)
+	if err != nil {
+		writeJSON(w, http.StatusBadGateway, errBody(err.Error()))
+		return
+	}
+	writeJSON(w, http.StatusOK, channels)
+}
+
+func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
+		return
+	}
+	if s.deps.Test == nil {
+		s.notImplemented(w, r)
+		return
+	}
+	writeJSON(w, http.StatusOK, s.deps.Test())
 }
 
 func (s *Server) notImplemented(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "not implemented"})
+	writeJSON(w, http.StatusNotImplemented, errBody("not implemented"))
 }
+
+func errBody(msg string) map[string]string { return map[string]string{"error": msg} }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
