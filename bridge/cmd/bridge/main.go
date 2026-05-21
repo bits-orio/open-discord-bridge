@@ -130,6 +130,12 @@ func main() {
 			Test: func() controlapi.TestResult {
 				return roundTrip(dc, rc, rt.InboundChannels())
 			},
+			GetConfig: func() controlapi.Config {
+				return getConfig(cfg, rt)
+			},
+			SetConfig: func(in controlapi.Config) error {
+				return setConfig(cfg, rt, dc, in)
+			},
 		}
 		srv := controlapi.New(cfg.ControlAPI.Listen, cfg.ControlAPI.AuthToken, deps)
 		go func() {
@@ -182,6 +188,56 @@ func roundTrip(dc *discord.Client, rc *rcon.Client, channels []string) controlap
 		res.Error = sendErr.Error()
 	}
 	return res
+}
+
+// getConfig backs GET /v1/config. Live routes come from the router; the static fields
+// come from the loaded config. Secrets are never included.
+func getConfig(cfg *config.Config, rt *router.Router) controlapi.Config {
+	rs := rt.Routes()
+	routes := make([]controlapi.Route, len(rs))
+	for i, r := range rs {
+		routes[i] = controlapi.Route{Source: r.Source, ChannelID: r.ChannelID}
+	}
+	return controlapi.Config{
+		Transport: cfg.Transport,
+		Factorio: controlapi.ConfigFactorio{
+			RconAddress:        cfg.Factorio.RCON.Address,
+			EventsFile:         cfg.Factorio.EventsFile,
+			RequiredModVersion: cfg.Factorio.RequiredModVersion,
+		},
+		Discord: controlapi.ConfigDiscord{
+			GuildID: cfg.Discord.GuildID,
+			Routes:  routes,
+		},
+	}
+}
+
+// setConfig backs POST /v1/config. Routing is applied live; runtime-immutable fields
+// (transport, events_file, rcon address) are rejected if a change is requested — those
+// require a restart with an updated config file.
+func setConfig(cfg *config.Config, rt *router.Router, dc *discord.Client, in controlapi.Config) error {
+	if in.Transport != "" && in.Transport != cfg.Transport {
+		return fmt.Errorf("transport cannot be changed at runtime; restart with an updated config")
+	}
+	if in.Factorio.EventsFile != "" && in.Factorio.EventsFile != cfg.Factorio.EventsFile {
+		return fmt.Errorf("factorio.events_file cannot be changed at runtime")
+	}
+	if in.Factorio.RconAddress != "" && in.Factorio.RconAddress != cfg.Factorio.RCON.Address {
+		return fmt.Errorf("factorio.rcon_address cannot be changed at runtime")
+	}
+	if len(in.Discord.Routes) == 0 {
+		return fmt.Errorf("discord.routes must not be empty")
+	}
+	routes := make([]router.Route, len(in.Discord.Routes))
+	for i, r := range in.Discord.Routes {
+		if r.Source == "" || r.ChannelID == "" {
+			return fmt.Errorf("discord.routes[%d] needs both source and channel_id", i)
+		}
+		routes[i] = router.Route{Source: r.Source, ChannelID: r.ChannelID}
+	}
+	rt.Update(routes)
+	dc.UpdateInbound(rt.InboundChannels())
+	return nil
 }
 
 // buildStatus assembles a live GET /v1/status snapshot.

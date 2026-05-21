@@ -52,13 +52,38 @@ type TestResult struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// Config is the GET/POST /v1/config body. Secrets are never included.
+type Config struct {
+	Transport string         `json:"transport,omitempty"`
+	Factorio  ConfigFactorio `json:"factorio"`
+	Discord   ConfigDiscord  `json:"discord"`
+}
+
+type ConfigFactorio struct {
+	RconAddress        string `json:"rcon_address,omitempty"`
+	EventsFile         string `json:"events_file,omitempty"`
+	RequiredModVersion string `json:"required_mod_version,omitempty"`
+}
+
+type ConfigDiscord struct {
+	GuildID string  `json:"guild_id,omitempty"`
+	Routes  []Route `json:"routes"`
+}
+
+type Route struct {
+	Source    string `json:"source"`
+	ChannelID string `json:"channel_id"`
+}
+
 // Deps are the bridge capabilities the API exposes. A nil func means the corresponding
 // endpoint reports 501 (Not Implemented).
 type Deps struct {
-	Status   func() Status
-	Guilds   func() ([]Guild, error)
-	Channels func(guildID string) ([]Channel, error)
-	Test     func() TestResult
+	Status    func() Status
+	Guilds    func() ([]Guild, error)
+	Channels  func(guildID string) ([]Channel, error)
+	Test      func() TestResult
+	GetConfig func() Config
+	SetConfig func(Config) error
 }
 
 type Server struct {
@@ -79,8 +104,8 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/v1/discord/guilds", s.auth(s.handleGuilds))
 	mux.HandleFunc("/v1/discord/channels", s.auth(s.handleChannels))
 	mux.HandleFunc("/v1/test", s.auth(s.handleTest))
+	mux.HandleFunc("/v1/config", s.auth(s.handleConfig))
 	// Documented in the spec; implemented in a later phase.
-	mux.HandleFunc("/v1/config", s.auth(s.notImplemented))
 	mux.HandleFunc("/v1/restart", s.auth(s.notImplemented))
 
 	s.srv = &http.Server{Addr: s.listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
@@ -163,6 +188,34 @@ func (s *Server) handleTest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.deps.Test())
+}
+
+func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
+	if s.deps.GetConfig == nil {
+		s.notImplemented(w, r)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, s.deps.GetConfig())
+	case http.MethodPost:
+		if s.deps.SetConfig == nil {
+			s.notImplemented(w, r)
+			return
+		}
+		var cfg Config
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			writeJSON(w, http.StatusBadRequest, errBody("invalid json: "+err.Error()))
+			return
+		}
+		if err := s.deps.SetConfig(cfg); err != nil {
+			writeJSON(w, http.StatusBadRequest, errBody(err.Error()))
+			return
+		}
+		writeJSON(w, http.StatusOK, s.deps.GetConfig()) // echo the applied config
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
+	}
 }
 
 func (s *Server) notImplemented(w http.ResponseWriter, r *http.Request) {

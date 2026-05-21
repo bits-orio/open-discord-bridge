@@ -2,6 +2,7 @@ package discord
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -11,9 +12,11 @@ type InboundFunc func(user, message, channelID string)
 
 type Client struct {
 	session   *discordgo.Session
-	inbound   map[string]bool
 	onMsg     InboundFunc
 	connected bool
+
+	mu      sync.RWMutex
+	inbound map[string]bool
 }
 
 func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, error) {
@@ -23,12 +26,21 @@ func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, er
 	}
 	s.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
 
-	c := &Client{session: s, inbound: map[string]bool{}, onMsg: onMsg}
-	for _, ch := range inboundChannels {
-		c.inbound[ch] = true
-	}
+	c := &Client{session: s, onMsg: onMsg, inbound: map[string]bool{}}
+	c.UpdateInbound(inboundChannels)
 	s.AddHandler(c.handleMessage)
 	return c, nil
+}
+
+// UpdateInbound atomically replaces the set of channels relayed back into the game.
+func (c *Client) UpdateInbound(channels []string) {
+	m := make(map[string]bool, len(channels))
+	for _, ch := range channels {
+		m[ch] = true
+	}
+	c.mu.Lock()
+	c.inbound = m
+	c.mu.Unlock()
 }
 
 func (c *Client) Open() error {
@@ -102,7 +114,10 @@ func (c *Client) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate)
 	if m.Author == nil || m.Author.Bot {
 		return // ignore bots, including ourselves — prevents echo loops
 	}
-	if !c.inbound[m.ChannelID] {
+	c.mu.RLock()
+	inbound := c.inbound[m.ChannelID]
+	c.mu.RUnlock()
+	if !inbound {
 		return
 	}
 	if m.Content == "" {

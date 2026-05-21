@@ -40,7 +40,7 @@ paths:
   /v1/config:
     get:
       operationId: getConfig
-      summary: Current bridge configuration (secrets redacted)
+      summary: Current bridge configuration (secrets never included)
       responses:
         "200":
           description: Current config
@@ -48,20 +48,27 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Config" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
     post:
       operationId: putConfig
-      summary: Push a new configuration (token, routing, transport)
+      summary: Push a new configuration
+      description: >
+        Applies routing changes live (no restart). Runtime-immutable fields (transport,
+        factorio.events_file, factorio.rcon_address) are rejected with 400 if a change is
+        requested — those require a restart with an updated config file. Returns the
+        applied configuration.
       requestBody:
         required: true
         content:
           application/json:
             schema: { $ref: "#/components/schemas/Config" }
       responses:
-        "204": { description: Applied }
+        "200":
+          description: Applied configuration
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Config" }
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
 
   /v1/restart:
     post:
