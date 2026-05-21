@@ -1,0 +1,25 @@
+# Open Discord Bridge — example config (MVP, Local transport only).
+# Copy to bridge.yaml and edit. Secrets come from env vars, never this file.
+
+factorio:
+  rcon:
+    address: 127.0.0.1:27015
+    password_env: FACTORIO_RCON_PASSWORD
+  # Path to the JSONL the companion mod writes. Supports ${ENV} and a leading ~/.
+  #   <factorio>/script-output/open-discord-bridge/events.jsonl
+  events_file: ${HOME}/factorio/script-output/open-discord-bridge/events.jsonl
+
+transport: local
+poll_interval: 1s
+
+discord:
+  token_env: DISCORD_BOT_TOKEN
+  guild_id: "000000000000000000"
+  # First matching route wins. Patterns: exact ("vanilla.chat"),
+  # namespace glob ("mts.*"), or catch-all ("*").
+  # Every channel listed here also accepts Discord messages back into the game.
+  routes:
+    - source: "vanilla.chat"
+      channel_id: "111111111111111111"
+    - source: "*"
+      channel_id: "111111111111111111"

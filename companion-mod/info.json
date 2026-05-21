@@ -1,0 +1,9 @@
+{
+  "name": "open-discord-bridge",
+  "version": "0.1.0",
+  "title": "Open Discord Bridge",
+  "author": "bits-orio",
+  "factorio_version": "2.0",
+  "dependencies": ["base >= 2.0"],
+  "description": "Bridges Factorio chat and events to Discord. Captures vanilla events on its own and exposes the open-discord-bridge-v1 remote interface so other mods (e.g. multi-team-support, OARC) can push their own events and receive inbound Discord messages."
+}

@@ -1,0 +1,9 @@
+# Local runtime config — contains secrets and machine-specific paths
+/bridge/.env
+/bridge/bridge.yaml
+
+# Built binary
+/bridge/odb-bridge
+
+# Generated local test rig (save, mods symlink, server settings)
+/.run/
