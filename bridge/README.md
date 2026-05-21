@@ -59,6 +59,34 @@ A successful start logs `connected to Discord; tailing <events_file>`.
 6. **Bonus:** type `!players` in Discord → the bridge runs `/players online` over RCON and
    replies with the online list.
 
+## Docker
+
+A multi-stage `Dockerfile` builds a ~16 MB image (static binary on Alpine, non-root).
+The repo-root `docker-compose.yml` is a full-stack example: a headless Factorio server
+with the companion mod mounted, plus the bridge sidecar sharing a volume for the events
+file and reaching RCON over the compose network.
+
+```sh
+cp .env.example .env                       # set DISCORD_BOT_TOKEN, FACTORIO_RCON_PASSWORD, BRIDGE_CONTROL_TOKEN
+mkdir -p .run && printf '%s' "$FACTORIO_RCON_PASSWORD" > .run/rconpw   # factoriotools reads this
+# edit bridge/bridge.docker.yaml -> set the channel_id
+docker compose up --build
+```
+
+The bridge reads `bridge/bridge.docker.yaml` (mounted), which points RCON at the
+`factorio` service and the events file at the shared `/factorio/script-output/...`. The
+Control API is published on `127.0.0.1:7777`. `restart: unless-stopped` is also what makes
+`POST /v1/restart` round-trip.
+
+**Bridge-only variant** (Factorio already running on the host): drop the `factorio`
+service, set `factorio.rcon.address: host.docker.internal:27015` in `bridge.docker.yaml`,
+and bind-mount the host's `script-output` into the bridge container.
+
+Build just the image:
+```sh
+docker build -t open-discord-bridge:latest ./bridge
+```
+
 ## Layout
 
 ```
@@ -68,4 +96,5 @@ internal/transport/ local.go — polling JSONL tailer (truncation-aware)
 internal/rcon/      reconnecting Factorio RCON client
 internal/discord/   discordgo gateway + REST, inbound message handler
 internal/router/    event-key → channel matching
+internal/controlapi/ HTTP Control API (/v1/*); spec in pkg/controlapi/spec/
 ```

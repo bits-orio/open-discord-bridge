@@ -1,0 +1,24 @@
+# Bridge config for the Docker/compose setup. Mounted read-only at
+# /etc/open-discord-bridge/bridge.yaml. Secrets come from env vars (see .env).
+factorio:
+  rcon:
+    # Compose service name for the bundled Factorio server. For the bridge-only
+    # variant (Factorio on the host), use host.docker.internal:27015.
+    address: factorio:27015
+    password_env: FACTORIO_RCON_PASSWORD
+  events_file: /factorio/script-output/open-discord-bridge/events.jsonl
+
+transport: local
+poll_interval: 1s
+
+discord:
+  token_env: DISCORD_BOT_TOKEN
+  guild_id: ""
+  routes:
+    - source: "*"
+      channel_id: "REPLACE_WITH_CHANNEL_ID"
+
+control_api:
+  enabled: true
+  listen: 0.0.0.0:7777        # in-container; publish to loopback in compose
+  auth_token_env: BRIDGE_CONTROL_TOKEN

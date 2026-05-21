@@ -1,0 +1,9 @@
+# Keep the build context lean and free of secrets / host artifacts.
+odb-bridge
+.env
+.env.*
+bridge.yaml
+bridge.docker.yaml
+*.log
+Dockerfile
+.dockerignore

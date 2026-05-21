@@ -1,0 +1,40 @@
+# Open Discord Bridge — full-stack example: a headless Factorio server (with the
+# companion mod mounted) plus the bridge sidecar. Copy .env.example to .env and set
+# your tokens, set the channel_id in bridge/bridge.docker.yaml, then:  docker compose up
+#
+# For the bridge-only variant (Factorio already running on the host), remove the
+# factorio service, point factorio.rcon.address at host.docker.internal:27015 in
+# bridge/bridge.docker.yaml, and bind-mount the host's script-output into the bridge.
+
+services:
+  factorio:
+    image: factoriotools/factorio:stable
+    restart: unless-stopped
+    ports:
+      - "34197:34197/udp"        # game
+    volumes:
+      - factorio:/factorio
+      # Companion mod — the dir name must be name_version from companion-mod/info.json.
+      - ./companion-mod:/factorio/mods/open-discord-bridge_0.1.0:ro
+      # factoriotools reads the RCON password from this file. Create it with:
+      #   mkdir -p .run && printf '%s' "$FACTORIO_RCON_PASSWORD" > .run/rconpw
+      - ./.run/rconpw:/factorio/config/rconpw:ro
+
+  bridge:
+    build: ./bridge
+    image: open-discord-bridge:latest
+    restart: unless-stopped       # also what makes POST /v1/restart round-trip
+    depends_on:
+      - factorio
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      FACTORIO_RCON_PASSWORD: ${FACTORIO_RCON_PASSWORD}
+      BRIDGE_CONTROL_TOKEN: ${BRIDGE_CONTROL_TOKEN}
+    ports:
+      - "127.0.0.1:7777:7777"     # Control API on loopback only
+    volumes:
+      - factorio:/factorio:ro     # read the events file the mod writes
+      - ./bridge/bridge.docker.yaml:/etc/open-discord-bridge/bridge.yaml:ro
+
+volumes:
+  factorio:
