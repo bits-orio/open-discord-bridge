@@ -74,10 +74,20 @@ paths:
     post:
       operationId: restart
       summary: Gracefully restart the bridge
+      description: >
+        Acknowledges with 202, then triggers a clean process exit. A process supervisor
+        (systemd Restart=always, Docker restart policy) brings the bridge back up with
+        fresh config. If the bridge is not supervised, this stops it.
       responses:
-        "202": { description: Restart accepted }
+        "202":
+          description: Restart accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: restarting }
         "401": { $ref: "#/components/responses/Unauthorized" }
-        "501": { $ref: "#/components/responses/NotImplemented" }
 
   /v1/test:
     post:

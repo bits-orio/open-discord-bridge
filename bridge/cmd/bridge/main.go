@@ -95,7 +95,10 @@ func main() {
 		dc.Send(channel, formatEvent(ev))
 	}
 
-	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	// baseCtx lets the Control API request a restart (clean exit → supervisor restarts).
+	baseCtx, requestRestart := context.WithCancel(context.Background())
+	defer requestRestart()
+	ctx, stop := signal.NotifyContext(baseCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go tail.Run(ctx, onLine)
 
@@ -135,6 +138,10 @@ func main() {
 			},
 			SetConfig: func(in controlapi.Config) error {
 				return setConfig(cfg, rt, dc, in)
+			},
+			Restart: func() {
+				log.Printf("controlapi: restart requested — exiting for supervisor to restart")
+				requestRestart()
 			},
 		}
 		srv := controlapi.New(cfg.ControlAPI.Listen, cfg.ControlAPI.AuthToken, deps)

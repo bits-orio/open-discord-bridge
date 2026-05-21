@@ -84,6 +84,7 @@ type Deps struct {
 	Test      func() TestResult
 	GetConfig func() Config
 	SetConfig func(Config) error
+	Restart   func()
 }
 
 type Server struct {
@@ -105,8 +106,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/v1/discord/channels", s.auth(s.handleChannels))
 	mux.HandleFunc("/v1/test", s.auth(s.handleTest))
 	mux.HandleFunc("/v1/config", s.auth(s.handleConfig))
-	// Documented in the spec; implemented in a later phase.
-	mux.HandleFunc("/v1/restart", s.auth(s.notImplemented))
+	mux.HandleFunc("/v1/restart", s.auth(s.handleRestart))
 
 	s.srv = &http.Server{Addr: s.listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
@@ -216,6 +216,25 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
 	}
+}
+
+// handleRestart acknowledges with 202, flushes the response, then triggers a graceful
+// process exit — a process supervisor (systemd, Docker restart policy) brings the bridge
+// back up with fresh config.
+func (s *Server) handleRestart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
+		return
+	}
+	if s.deps.Restart == nil {
+		s.notImplemented(w, r)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "restarting"})
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	go s.deps.Restart()
 }
 
 func (s *Server) notImplemented(w http.ResponseWriter, r *http.Request) {

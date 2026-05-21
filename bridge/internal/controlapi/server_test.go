@@ -31,6 +31,7 @@ func testServer() *Server {
 			}
 			return nil
 		},
+		Restart: func() {},
 	})
 }
 
@@ -49,7 +50,7 @@ func testMux() http.Handler {
 	mux.HandleFunc("/v1/discord/channels", s.auth(s.handleChannels))
 	mux.HandleFunc("/v1/test", s.auth(s.handleTest))
 	mux.HandleFunc("/v1/config", s.auth(s.handleConfig))
-	mux.HandleFunc("/v1/restart", s.auth(s.notImplemented))
+	mux.HandleFunc("/v1/restart", s.auth(s.handleRestart))
 	return mux
 }
 
@@ -140,8 +141,22 @@ func TestConfigPost(t *testing.T) {
 	}
 }
 
-func TestStubReturns501(t *testing.T) {
-	if rr := do(t, http.MethodPost, "/v1/restart", true); rr.Code != http.StatusNotImplemented {
+func TestRestartAccepted(t *testing.T) {
+	if rr := do(t, http.MethodPost, "/v1/restart", true); rr.Code != http.StatusAccepted {
+		t.Fatalf("got %d, want 202", rr.Code)
+	}
+}
+
+// A nil dep falls back to 501.
+func TestNilDepReturns501(t *testing.T) {
+	s := New("", "secret", Deps{}) // all deps nil
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/discord/guilds", s.auth(s.handleGuilds))
+	req := httptest.NewRequest(http.MethodGet, "/v1/discord/guilds", nil)
+	req.Header.Set("Authorization", "Bearer secret")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotImplemented {
 		t.Fatalf("got %d, want 501", rr.Code)
 	}
 }
