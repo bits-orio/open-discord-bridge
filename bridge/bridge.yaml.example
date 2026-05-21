@@ -23,3 +23,11 @@ discord:
       channel_id: "111111111111111111"
     - source: "*"
       channel_id: "111111111111111111"
+
+# Open HTTP Control API (off by default). Any portal/CLI integrates against the same
+# spec — see pkg/controlapi/spec/openapi.yaml. Bind to loopback unless you front it
+# with TLS + a tunnel.
+control_api:
+  enabled: false
+  listen: 127.0.0.1:7777
+  auth_token_env: BRIDGE_CONTROL_TOKEN

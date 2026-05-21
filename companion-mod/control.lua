@@ -123,6 +123,17 @@ commands.add_command("odb-incoming", "Open Discord Bridge: inject an incoming Di
   end
 end)
 
+-- Report mod status as JSON for the bridge's version handshake and Control API
+-- /v1/status. The bridge runs this over RCON.
+commands.add_command("odb-status", "Open Discord Bridge: report mod status as JSON (RCON)", function(cmd)
+  if cmd.player_index then return end -- RCON / server only
+  rcon.print(helpers.table_to_json({
+    mod_version = script.active_mods["open-discord-bridge"],
+    interface   = INTERFACE,
+    sources     = (storage.odb and storage.odb.sources) or {},
+  }))
+end)
+
 -- ─── Baseline layer: vanilla events ──────────────────────────────────────────
 
 script.on_event(defines.events.on_console_chat, function(e)

@@ -6,12 +6,16 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os/signal"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/config"
+	"github.com/bits-orio/open-discord-bridge/bridge/internal/controlapi"
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/discord"
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/rcon"
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/router"
@@ -67,7 +71,15 @@ func main() {
 	defer dc.Close()
 	log.Printf("bridge: connected to Discord; tailing %s", cfg.Factorio.EventsFile)
 
+	// Version handshake: confirm the companion mod is reachable and log its version.
+	if v := queryModVersion(rc); v != "" {
+		log.Printf("bridge: companion mod version %s", v)
+	} else {
+		log.Printf("bridge: companion mod not reachable over RCON yet (will retry on demand)")
+	}
+
 	// Game → Discord.
+	var lastEvent atomic.Int64
 	tail := transport.NewLocal(cfg.Factorio.EventsFile, cfg.Interval())
 	onLine := func(line []byte) {
 		var ev Event
@@ -75,6 +87,7 @@ func main() {
 			log.Printf("transport: bad JSONL line: %v", err)
 			return
 		}
+		lastEvent.Store(time.Now().Unix())
 		channel, ok := rt.Channel(ev.Event)
 		if !ok {
 			return // no route for this event; drop silently
@@ -86,8 +99,63 @@ func main() {
 	defer stop()
 	go tail.Run(ctx, onLine)
 
+	// Open Control API (off by default).
+	if cfg.ControlAPI.Enabled {
+		statusFn := func() controlapi.Status {
+			return buildStatus(cfg, dc, rc, lastEvent.Load())
+		}
+		srv := controlapi.New(cfg.ControlAPI.Listen, cfg.ControlAPI.AuthToken, statusFn)
+		go func() {
+			if err := srv.Start(ctx); err != nil && err != http.ErrServerClosed {
+				log.Printf("controlapi: %v", err)
+			}
+		}()
+	}
+
 	<-ctx.Done()
 	log.Printf("bridge: shutting down")
+}
+
+// queryModVersion asks the companion mod for its version over RCON ("" if unreachable).
+func queryModVersion(rc *rcon.Client) string {
+	resp, err := rc.Execute("/odb-status")
+	if err != nil {
+		return ""
+	}
+	var ms struct {
+		ModVersion string `json:"mod_version"`
+	}
+	_ = json.Unmarshal([]byte(resp), &ms)
+	return ms.ModVersion
+}
+
+// buildStatus assembles a live GET /v1/status snapshot.
+func buildStatus(cfg *config.Config, dc *discord.Client, rc *rcon.Client, lastEventUnix int64) controlapi.Status {
+	fs := controlapi.FactorioStatus{
+		RconAddress:        cfg.Factorio.RCON.Address,
+		RequiredModVersion: cfg.Factorio.RequiredModVersion,
+	}
+	if resp, err := rc.Execute("/odb-status"); err != nil {
+		fs.Error = err.Error()
+	} else {
+		fs.RconOK = true
+		var ms struct {
+			ModVersion string          `json:"mod_version"`
+			Interface  string          `json:"interface"`
+			Sources    json.RawMessage `json:"sources"`
+		}
+		if json.Unmarshal([]byte(resp), &ms) == nil {
+			fs.ModVersion = ms.ModVersion
+			fs.Interface = ms.Interface
+			fs.Sources = ms.Sources
+		}
+	}
+	return controlapi.Status{
+		Transport:     cfg.Transport,
+		Discord:       controlapi.DiscordStatus{Connected: dc.Connected()},
+		Factorio:      fs,
+		LastEventUnix: lastEventUnix,
+	}
 }
 
 // dc is package-level so onInbound (defined before dc) can reference it.

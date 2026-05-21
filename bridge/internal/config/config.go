@@ -27,15 +27,24 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 }
 
 type Config struct {
-	Factorio     FactorioConfig `yaml:"factorio"`
-	Transport    string         `yaml:"transport"`
-	PollInterval Duration       `yaml:"poll_interval"`
-	Discord      DiscordConfig  `yaml:"discord"`
+	Factorio     FactorioConfig   `yaml:"factorio"`
+	Transport    string           `yaml:"transport"`
+	PollInterval Duration         `yaml:"poll_interval"`
+	Discord      DiscordConfig    `yaml:"discord"`
+	ControlAPI   ControlAPIConfig `yaml:"control_api"`
 }
 
 type FactorioConfig struct {
-	RCON       RCONConfig `yaml:"rcon"`
-	EventsFile string     `yaml:"events_file"`
+	RCON               RCONConfig `yaml:"rcon"`
+	EventsFile         string     `yaml:"events_file"`
+	RequiredModVersion string     `yaml:"required_mod_version"`
+}
+
+type ControlAPIConfig struct {
+	Enabled      bool   `yaml:"enabled"`
+	Listen       string `yaml:"listen"`
+	AuthTokenEnv string `yaml:"auth_token_env"`
+	AuthToken    string `yaml:"-"` // resolved from env at load time
 }
 
 type RCONConfig struct {
@@ -86,6 +95,12 @@ func Load(path string) (*Config, error) {
 	if c.Factorio.RCON.PasswordEnv != "" {
 		c.Factorio.RCON.Password = os.Getenv(c.Factorio.RCON.PasswordEnv)
 	}
+	if c.ControlAPI.AuthTokenEnv != "" {
+		c.ControlAPI.AuthToken = os.Getenv(c.ControlAPI.AuthTokenEnv)
+	}
+	if c.ControlAPI.Enabled && c.ControlAPI.Listen == "" {
+		c.ControlAPI.Listen = "127.0.0.1:7777"
+	}
 
 	if err := c.validate(); err != nil {
 		return nil, err
@@ -116,6 +131,9 @@ func (c *Config) validate() error {
 		if r.Source == "" || r.ChannelID == "" {
 			return fmt.Errorf("discord.routes[%d] needs both source and channel_id", i)
 		}
+	}
+	if c.ControlAPI.Enabled && c.ControlAPI.AuthToken == "" {
+		return fmt.Errorf("control_api.enabled but auth token empty; set env var %q", c.ControlAPI.AuthTokenEnv)
 	}
 	return nil
 }

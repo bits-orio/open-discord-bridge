@@ -1,0 +1,236 @@
+openapi: 3.0.3
+info:
+  title: Open Discord Bridge — Control API
+  version: "1.0.0"
+  description: >
+    The open, versioned HTTP control surface of the Open Discord Bridge. Any portal
+    (AleForge's, a competitor's, a Pterodactyl plugin) or the open-source CLI/wizard
+    integrates against this same contract — there are no privileged endpoints. The
+    bridge runs upstream releases; new capabilities land in this spec first.
+
+    Implementation status (MVP): GET /v1/status is implemented. The remaining endpoints
+    are part of the contract but currently return 501 Not Implemented.
+  license:
+    name: Apache-2.0
+
+servers:
+  - url: http://127.0.0.1:7777
+    description: Default loopback bind (set control_api.listen in bridge.yaml)
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/status:
+    get:
+      operationId: getStatus
+      summary: Bridge health and connection state
+      description: >
+        Live snapshot: transport mode, Discord gateway state, Factorio RCON
+        reachability, companion mod version + interface, last event timestamp, and the
+        event catalog declared by integrator mods via register_source.
+      responses:
+        "200":
+          description: Current status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Status" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/config:
+    get:
+      operationId: getConfig
+      summary: Current bridge configuration (secrets redacted)
+      responses:
+        "200":
+          description: Current config
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Config" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+    post:
+      operationId: putConfig
+      summary: Push a new configuration (token, routing, transport)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/Config" }
+      responses:
+        "204": { description: Applied }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+
+  /v1/restart:
+    post:
+      operationId: restart
+      summary: Gracefully restart the bridge
+      responses:
+        "202": { description: Restart accepted }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+
+  /v1/test:
+    post:
+      operationId: roundTripTest
+      summary: Send a round-trip test message (Discord <-> game)
+      responses:
+        "200":
+          description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  outbound_ok: { type: boolean }
+                  inbound_ok: { type: boolean }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+
+  /v1/discord/guilds:
+    get:
+      operationId: listGuilds
+      summary: "Proxy: guilds the bot is a member of"
+      responses:
+        "200":
+          description: Guilds
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Guild" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+
+  /v1/discord/channels:
+    get:
+      operationId: listChannels
+      summary: "Proxy: channels in a guild"
+      parameters:
+        - name: guild_id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Channel" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "501": { $ref: "#/components/responses/NotImplemented" }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "Token from control_api.auth_token_env. Sent as `Authorization: Bearer <token>`."
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid bearer token
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    BadRequest:
+      description: Invalid request body
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotImplemented:
+      description: Endpoint defined by the contract but not yet implemented
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+      required: [error]
+
+    Status:
+      type: object
+      properties:
+        transport: { type: string, example: local }
+        discord: { $ref: "#/components/schemas/DiscordStatus" }
+        factorio: { $ref: "#/components/schemas/FactorioStatus" }
+        last_event_unix:
+          type: integer
+          format: int64
+          description: Unix time of the last event seen from the game (0 if none yet).
+      required: [transport, discord, factorio, last_event_unix]
+
+    DiscordStatus:
+      type: object
+      properties:
+        connected: { type: boolean }
+      required: [connected]
+
+    FactorioStatus:
+      type: object
+      properties:
+        rcon_address: { type: string }
+        rcon_ok: { type: boolean }
+        mod_version: { type: string, example: "0.1.0" }
+        interface: { type: string, example: open-discord-bridge-v1 }
+        required_mod_version: { type: string }
+        sources:
+          description: Event catalog declared by integrator mods via register_source.
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                key: { type: string }
+                description: { type: string }
+        error: { type: string, description: Present if the mod could not be reached over RCON. }
+      required: [rcon_address, rcon_ok]
+
+    Config:
+      type: object
+      description: Bridge configuration. Secrets (tokens, passwords) are redacted on GET.
+      properties:
+        transport: { type: string, enum: [local, sftp, ssh] }
+        factorio:
+          type: object
+          properties:
+            rcon_address: { type: string }
+            events_file: { type: string }
+            required_mod_version: { type: string }
+        discord:
+          type: object
+          properties:
+            guild_id: { type: string }
+            routes:
+              type: array
+              items: { $ref: "#/components/schemas/Route" }
+
+    Route:
+      type: object
+      properties:
+        source:
+          type: string
+          description: Event key, namespace glob (e.g. "mts.*"), or "*".
+        channel_id: { type: string }
+      required: [source, channel_id]
+
+    Guild:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+
+    Channel:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        type: { type: integer }

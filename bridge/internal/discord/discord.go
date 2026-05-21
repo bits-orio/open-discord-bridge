@@ -10,9 +10,10 @@ import (
 type InboundFunc func(user, message, channelID string)
 
 type Client struct {
-	session *discordgo.Session
-	inbound map[string]bool
-	onMsg   InboundFunc
+	session   *discordgo.Session
+	inbound   map[string]bool
+	onMsg     InboundFunc
+	connected bool
 }
 
 func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, error) {
@@ -30,8 +31,21 @@ func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, er
 	return c, nil
 }
 
-func (c *Client) Open() error  { return c.session.Open() }
-func (c *Client) Close() error { return c.session.Close() }
+func (c *Client) Open() error {
+	if err := c.session.Open(); err != nil {
+		return err
+	}
+	c.connected = true
+	return nil
+}
+
+func (c *Client) Close() error {
+	c.connected = false
+	return c.session.Close()
+}
+
+// Connected reports whether the gateway connection is currently open.
+func (c *Client) Connected() bool { return c.connected }
 
 // Send posts a plain message to a channel.
 func (c *Client) Send(channelID, content string) {
