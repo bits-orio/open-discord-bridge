@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"os/signal"
+	"sort"
 	"strings"
 	"syscall"
 
@@ -121,9 +122,59 @@ func formatEvent(ev Event) string {
 	case "vanilla.game_started":
 		return ":satellite: Server is online."
 	default:
-		b, _ := json.Marshal(d)
-		return fmt.Sprintf("`%s` %s", ev.Event, string(b))
+		return formatGeneric(ev.Event, d)
 	}
+}
+
+// formatGeneric renders any non-baseline event (mts.*, oarc.*, custom.*, ...) without
+// hardcoding mod knowledge: a humanized "[namespace → event]" label, followed by the
+// integrator-supplied "text" sentence if present, else a readable key=value summary.
+func formatGeneric(eventKey string, data map[string]any) string {
+	label := humanizeKey(eventKey)
+	if s := firstString(data, "text", "message"); s != "" {
+		return label + " " + s
+	}
+	if kv := kvSummary(data); kv != "" {
+		return label + " " + kv
+	}
+	return label
+}
+
+// humanizeKey turns "mts.team_created" into "[mts → team created]" and a key with no
+// namespace like "custom" into "[custom]".
+func humanizeKey(eventKey string) string {
+	ns, name, found := strings.Cut(eventKey, ".")
+	if !found {
+		return "[" + strings.ReplaceAll(ns, "_", " ") + "]"
+	}
+	return fmt.Sprintf("[%s → %s]", ns, strings.ReplaceAll(name, "_", " "))
+}
+
+func firstString(data map[string]any, keys ...string) string {
+	for _, k := range keys {
+		if v, ok := data[k].(string); ok && v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// kvSummary is the fallback when an event carries no "text": sorted key=value pairs,
+// skipping the "text"/"message" keys themselves.
+func kvSummary(data map[string]any) string {
+	keys := make([]string, 0, len(data))
+	for k := range data {
+		if k == "text" || k == "message" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s=%s", k, str(data[k])))
+	}
+	return strings.Join(parts, ", ")
 }
 
 // str renders a JSON value as a tidy string (whole-number floats lose the decimal).
