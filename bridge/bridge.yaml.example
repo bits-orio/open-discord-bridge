@@ -5,11 +5,19 @@ factorio:
   rcon:
     address: 127.0.0.1:27015
     password_env: FACTORIO_RCON_PASSWORD
-  # Path to the JSONL the companion mod writes. Supports ${ENV} and a leading ~/.
-  #   <factorio>/script-output/open-discord-bridge/events.jsonl
+  # Path to the JSONL the companion mod writes (local path, or remote path for sftp).
+  # Supports ${ENV} and a leading ~/.
   events_file: ${HOME}/factorio/script-output/open-discord-bridge/events.jsonl
 
-transport: local
+  # Only used when transport is "sftp" (bridge on separate infra from Factorio).
+  # sftp:
+  #   host: game-host:22
+  #   user: factorio-bridge
+  #   key_path: /secrets/bridge_ed25519     # or set a password via password_env
+  #   password_env: SFTP_PASSWORD
+  #   known_hosts_path: /secrets/known_hosts # omit to skip host-key verification (logs a warning)
+
+transport: local        # local | sftp  (inbound is always RCON)
 poll_interval: 1s
 
 discord:

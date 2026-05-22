@@ -39,8 +39,19 @@ type Config struct {
 
 type FactorioConfig struct {
 	RCON               RCONConfig `yaml:"rcon"`
-	EventsFile         string     `yaml:"events_file"`
+	EventsFile         string     `yaml:"events_file"` // local path, or remote path for sftp
 	RequiredModVersion string     `yaml:"required_mod_version"`
+	SFTP               SFTPConfig `yaml:"sftp"`
+}
+
+// SFTPConfig is used when transport is "sftp" (bridge on separate infra from Factorio).
+type SFTPConfig struct {
+	Host           string `yaml:"host"` // host:port
+	User           string `yaml:"user"`
+	KeyPath        string `yaml:"key_path"`
+	PasswordEnv    string `yaml:"password_env"`
+	Password       string `yaml:"-"` // resolved from env at load time
+	KnownHostsPath string `yaml:"known_hosts_path"`
 }
 
 type ControlAPIConfig struct {
@@ -106,6 +117,9 @@ func Load(path string) (*Config, error) {
 	if c.ControlAPI.AuthTokenEnv != "" {
 		c.ControlAPI.AuthToken = os.Getenv(c.ControlAPI.AuthTokenEnv)
 	}
+	if c.Factorio.SFTP.PasswordEnv != "" {
+		c.Factorio.SFTP.Password = os.Getenv(c.Factorio.SFTP.PasswordEnv)
+	}
 	if c.ControlAPI.Enabled && c.ControlAPI.Listen == "" {
 		c.ControlAPI.Listen = "127.0.0.1:7777"
 	}
@@ -117,11 +131,20 @@ func Load(path string) (*Config, error) {
 }
 
 func (c *Config) validate() error {
-	if c.Transport != "local" {
-		return fmt.Errorf("transport %q not supported in this MVP (only \"local\")", c.Transport)
+	if c.Transport != "local" && c.Transport != "sftp" {
+		return fmt.Errorf("transport %q not supported (use \"local\" or \"sftp\")", c.Transport)
 	}
 	if c.Factorio.EventsFile == "" {
 		return fmt.Errorf("factorio.events_file is required")
+	}
+	if c.Transport == "sftp" {
+		s := c.Factorio.SFTP
+		if s.Host == "" || s.User == "" {
+			return fmt.Errorf("sftp transport requires factorio.sftp.host and factorio.sftp.user")
+		}
+		if s.KeyPath == "" && s.Password == "" {
+			return fmt.Errorf("sftp transport requires factorio.sftp.key_path or a password")
+		}
 	}
 	if c.Factorio.RCON.Address == "" {
 		return fmt.Errorf("factorio.rcon.address is required")
@@ -161,6 +184,14 @@ func LoadFromEnv() (*Config, error) {
 			},
 			EventsFile:         expandPath(os.Getenv("ODB_EVENTS_FILE")),
 			RequiredModVersion: os.Getenv("ODB_REQUIRED_MOD_VERSION"),
+			SFTP: SFTPConfig{
+				Host:           os.Getenv("ODB_SFTP_HOST"),
+				User:           os.Getenv("ODB_SFTP_USER"),
+				KeyPath:        os.Getenv("ODB_SFTP_KEY_PATH"),
+				PasswordEnv:    "SFTP_PASSWORD",
+				Password:       os.Getenv("SFTP_PASSWORD"),
+				KnownHostsPath: os.Getenv("ODB_SFTP_KNOWN_HOSTS"),
+			},
 		},
 		Discord: DiscordConfig{
 			TokenEnv: "DISCORD_BOT_TOKEN",

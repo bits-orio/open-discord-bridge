@@ -80,7 +80,19 @@ func main() {
 
 	// Game → Discord.
 	var lastEvent atomic.Int64
-	tail := transport.NewLocal(cfg.Factorio.EventsFile, cfg.Interval())
+	var tail *transport.Tailer
+	switch cfg.Transport {
+	case "sftp":
+		tail = transport.NewSFTP(transport.SFTPConfig{
+			Host:           cfg.Factorio.SFTP.Host,
+			User:           cfg.Factorio.SFTP.User,
+			KeyPath:        cfg.Factorio.SFTP.KeyPath,
+			Password:       cfg.Factorio.SFTP.Password,
+			KnownHostsPath: cfg.Factorio.SFTP.KnownHostsPath,
+		}, cfg.Factorio.EventsFile, cfg.Interval())
+	default:
+		tail = transport.NewLocal(cfg.Factorio.EventsFile, cfg.Interval())
+	}
 	onLine := func(line []byte) {
 		var ev Event
 		if err := json.Unmarshal(line, &ev); err != nil {

@@ -31,7 +31,7 @@ env vars and no file is mounted.
 
 | Variable | Meaning | Default |
 |---|---|---|
-| `ODB_TRANSPORT` | Transport (`local`) | `local` |
+| `ODB_TRANSPORT` | Transport: `local` or `sftp` | `local` |
 | `ODB_POLL_INTERVAL` | Local tailer poll interval | `1s` |
 | `ODB_RCON_ADDRESS` | Factorio RCON `host:port` | — (required) |
 | `FACTORIO_RCON_PASSWORD` | RCON password (**secret**) | — (required) |
@@ -44,6 +44,11 @@ env vars and no file is mounted.
 | `ODB_CONTROL_API_ENABLED` | Enable the Control API | `false` |
 | `ODB_CONTROL_API_LISTEN` | Control API bind address | `127.0.0.1:7777` |
 | `BRIDGE_CONTROL_TOKEN` | Control API bearer token (**secret**, required if enabled) | — |
+| `ODB_SFTP_HOST` | SFTP `host:port` (when `ODB_TRANSPORT=sftp`) | — |
+| `ODB_SFTP_USER` | SFTP user | — |
+| `ODB_SFTP_KEY_PATH` | Private key file for SFTP key auth | — |
+| `SFTP_PASSWORD` | SFTP password (**secret**; alternative to a key) | — |
+| `ODB_SFTP_KNOWN_HOSTS` | known_hosts file; omit to skip host-key check (logs a warning) | — |
 
 Provide routes via **either** `ODB_DISCORD_CHANNEL_ID` (simple, one channel) **or**
 `ODB_ROUTES` (e.g. `vanilla.chat=111,mts.*=222,*=111`).
@@ -59,7 +64,7 @@ reads the mod's `events.jsonl`:
 |---|---|---|---|
 | **Local (file)** | Reads the events file from a filesystem path (`inotify`-free polling) | **Available** | Bridge shares a filesystem with Factorio — same host, or a shared/bind mount |
 | **Shared mount** | Local transport against a bind-mounted Factorio data dir | **Available** (it *is* Local) | Bridge in its own container, but the host can mount Factorio's data dir into it |
-| **SFTP** | Pulls the events file over SFTP | **Planned (Phase 2)** | Isolated containers with no shared FS; fits Pterodactyl's per-server SFTP |
+| **SFTP** | Pulls the events file over SFTP (key or password auth, self-reconnecting) | **Available** | Isolated containers with no shared FS; fits Pterodactyl's per-server SFTP |
 
 When Factorio and the bridge are on different hosts/containers, set `ODB_RCON_ADDRESS`
 (or `factorio.rcon.address`) to the Factorio server's network address — not `127.0.0.1`.
@@ -111,8 +116,8 @@ See [`docker-compose.yml`](docker-compose.yml).
 The bridge is containerized; Factorio runs on another host/container.
 
 - RCON: `ODB_RCON_ADDRESS=game-host:27015` (reachable over the network).
-- Events: either bind-mount Factorio's data dir read-only (shared-mount → Local), or use
-  SFTP (planned).
+- Events: either bind-mount Factorio's data dir read-only (shared-mount → Local), or set
+  `ODB_TRANSPORT=sftp` with `ODB_SFTP_HOST`/`ODB_SFTP_USER`/`ODB_SFTP_KEY_PATH`.
 
 ### E. Panels — Pterodactyl / Wings (individual containers)
 Each process is its own panel-managed container; the panel controls lifecycle. This is
@@ -124,9 +129,9 @@ Each process is its own panel-managed container; the panel controls lifecycle. T
 - The container is panel-friendly: logs to stdout, stops on `SIGTERM`, and
   `POST /v1/restart` exits cleanly so the panel restarts it.
 
-> **Open item:** whether the bridge container reaches `events.jsonl` via a Wings shared
-> mount (Local works today) or via SFTP (Phase 2, to be built). A Pterodactyl egg is a
-> planned deliverable once that's settled.
+> **Both event-access paths now work:** a Wings shared mount (Local transport) **or**
+> SFTP (`ODB_TRANSPORT=sftp`, pointing at Pterodactyl's per-server SFTP). The open item is
+> only which one AleForge prefers operationally. A Pterodactyl egg is a planned deliverable.
 
 ---
 
