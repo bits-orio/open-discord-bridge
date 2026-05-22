@@ -87,6 +87,30 @@ Build just the image:
 docker build -t open-discord-bridge:latest ./bridge
 ```
 
+### Standalone container (panels like Pterodactyl)
+
+`docker-compose.yml` is a **self-host convenience**. Panels that run each process as its
+own container (Pterodactyl/Wings) instead manage the bridge as an individual container:
+
+```sh
+docker run -d --name odb-bridge \
+  -e DISCORD_BOT_TOKEN=... -e FACTORIO_RCON_PASSWORD=... -e BRIDGE_CONTROL_TOKEN=... \
+  -p 127.0.0.1:7777:7777 \
+  -v /path/to/bridge.yaml:/etc/open-discord-bridge/bridge.yaml:ro \
+  open-discord-bridge:latest
+```
+
+The container is panel-friendly by design: it logs to stdout, stops cleanly on `SIGTERM`,
+and `POST /v1/restart` is a graceful exit so the panel restarts it.
+
+Because the bridge and Factorio are then **separate, isolated containers**:
+- **RCON:** set `factorio.rcon.address` to the Factorio container's network address (its
+  allocation / internal DNS name), not `127.0.0.1`.
+- **Events file:** the bridge needs a path to the mod's `events.jsonl`. Either bind-mount
+  the Factorio server's data dir into the bridge container read-only (Local transport), or
+  use a remote transport (SFTP — planned, fits Pterodactyl's per-server SFTP). This choice
+  is deployment-specific.
+
 ## Layout
 
 ```
