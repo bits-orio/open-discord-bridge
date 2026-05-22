@@ -1,9 +1,12 @@
 package config
 
 import (
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -65,8 +68,13 @@ type Route struct {
 	ChannelID string `yaml:"channel_id"`
 }
 
-// Load reads and validates the config file, resolving secrets from the environment.
+// Load reads and validates configuration. If the config file is absent, it builds the
+// config entirely from environment variables (env-var config mode) — see LoadFromEnv.
 func Load(path string) (*Config, error) {
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		return LoadFromEnv()
+	}
+
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)
@@ -136,6 +144,97 @@ func (c *Config) validate() error {
 		return fmt.Errorf("control_api.enabled but auth token empty; set env var %q", c.ControlAPI.AuthTokenEnv)
 	}
 	return nil
+}
+
+// LoadFromEnv builds config entirely from environment variables — used when no config
+// file is present (containers, panels like Pterodactyl). Non-secret settings use ODB_*
+// vars; secrets reuse the same names as file mode (DISCORD_BOT_TOKEN,
+// FACTORIO_RCON_PASSWORD, BRIDGE_CONTROL_TOKEN).
+func LoadFromEnv() (*Config, error) {
+	c := &Config{
+		Transport: getenvDefault("ODB_TRANSPORT", "local"),
+		Factorio: FactorioConfig{
+			RCON: RCONConfig{
+				Address:     os.Getenv("ODB_RCON_ADDRESS"),
+				PasswordEnv: "FACTORIO_RCON_PASSWORD",
+				Password:    os.Getenv("FACTORIO_RCON_PASSWORD"),
+			},
+			EventsFile:         expandPath(os.Getenv("ODB_EVENTS_FILE")),
+			RequiredModVersion: os.Getenv("ODB_REQUIRED_MOD_VERSION"),
+		},
+		Discord: DiscordConfig{
+			TokenEnv: "DISCORD_BOT_TOKEN",
+			Token:    os.Getenv("DISCORD_BOT_TOKEN"),
+			GuildID:  os.Getenv("ODB_DISCORD_GUILD_ID"),
+		},
+		ControlAPI: ControlAPIConfig{
+			Enabled:      parseBool(os.Getenv("ODB_CONTROL_API_ENABLED")),
+			Listen:       os.Getenv("ODB_CONTROL_API_LISTEN"),
+			AuthTokenEnv: "BRIDGE_CONTROL_TOKEN",
+			AuthToken:    os.Getenv("BRIDGE_CONTROL_TOKEN"),
+		},
+	}
+
+	if v := os.Getenv("ODB_POLL_INTERVAL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return nil, fmt.Errorf("ODB_POLL_INTERVAL: %w", err)
+		}
+		c.PollInterval = Duration(d)
+	} else {
+		c.PollInterval = Duration(time.Second)
+	}
+
+	routes, err := routesFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	c.Discord.Routes = routes
+
+	if c.ControlAPI.Enabled && c.ControlAPI.Listen == "" {
+		c.ControlAPI.Listen = "127.0.0.1:7777"
+	}
+
+	if err := c.validate(); err != nil {
+		return nil, err
+	}
+	return c, nil
+}
+
+// routesFromEnv parses ODB_ROUTES ("source=channel_id,source=channel_id"), or falls back
+// to ODB_DISCORD_CHANNEL_ID as a single catch-all route.
+func routesFromEnv() ([]Route, error) {
+	if raw := os.Getenv("ODB_ROUTES"); raw != "" {
+		var routes []Route
+		for _, pair := range strings.Split(raw, ",") {
+			pair = strings.TrimSpace(pair)
+			if pair == "" {
+				continue
+			}
+			src, ch, ok := strings.Cut(pair, "=")
+			if !ok {
+				return nil, fmt.Errorf("ODB_ROUTES entry %q must be source=channel_id", pair)
+			}
+			routes = append(routes, Route{Source: strings.TrimSpace(src), ChannelID: strings.TrimSpace(ch)})
+		}
+		return routes, nil
+	}
+	if ch := os.Getenv("ODB_DISCORD_CHANNEL_ID"); ch != "" {
+		return []Route{{Source: "*", ChannelID: ch}}, nil
+	}
+	return nil, nil // validate reports the empty-routes error
+}
+
+func getenvDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
+}
+
+func parseBool(s string) bool {
+	b, _ := strconv.ParseBool(s)
+	return b
 }
 
 func (c *Config) Interval() time.Duration { return time.Duration(c.PollInterval) }
