@@ -11,8 +11,10 @@ import (
 )
 
 // InvitePermissions: View Channels (1024) + Send Messages (2048) + Embed Links (16384) +
-// Read Message History (65536) = 84992.
-const InvitePermissions = "84992"
+// Read Message History (65536) + Manage Nicknames (134217728) + Manage Roles (268435456)
+// = 402738176. Manage Roles/Nicknames power the linked-player role/nickname feature; if
+// used, the bot's role must sit above the target role.
+const InvitePermissions = "402738176"
 
 // Bot is a validated Discord bot connection (REST only — no gateway).
 type Bot struct {

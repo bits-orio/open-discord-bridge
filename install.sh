@@ -89,8 +89,11 @@ If you DON'T have a bot yet:
      (Required, or Discord -> game messages will arrive empty.)
   4. Click "Reset Token", confirm, and copy the token -> this goes in bridge/.env.
   5. Invite it to your server: left sidebar -> "OAuth2" -> "URL Generator":
-       - Scopes:       bot
-       - Bot perms:    View Channels, Send Messages, Read Message History
+       - Scopes:       bot, applications.commands   (applications.commands = slash commands)
+       - Bot perms:    View Channels, Send Messages, Embed Links, Read Message History,
+                       Manage Roles, Manage Nicknames
+                       (Manage Roles/Nicknames are for marking linked players; if you use
+                        them, also drag the bot's role ABOVE the "linked" role.)
      Copy the generated URL at the bottom, open it, pick your server, Authorize.
 
 If you ALREADY have a bot:
