@@ -45,6 +45,9 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 - [ ] Re-using the same code → "invalid or already used"
 - [ ] Waiting >60s then linking → "expired"
 - [ ] (For integrators) `remote.call("open-discord-bridge-v1","linked_discord_id",name)` returns the ID
+- [ ] **Persistence:** restart the server (same save) → the link still works (name still
+      tints; `linked_discord_id` still returns the ID). Links live in the mod's save
+      `storage`, so they survive restarts; a brand-new map starts with none.
 
 ## 6. Embeds (optional)
 - [ ] Set `discord.embed: true` (or `ODB_EMBED=true`), restart → events render as colored
