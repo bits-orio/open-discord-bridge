@@ -127,10 +127,14 @@ server admins) you configure nothing; the lists are for when those sets differ.
 **Notes:**
 - Anyone in the channel can run **public** commands — keep destructive ones `admin: true`.
 - `rcon` may be **multiline** (a `/silent-command` script); it's sent as a single RCON call.
-- Admin-gating and multiline need the **YAML file**; env mode (`ODB_COMMANDS`) is the
-  simple subset (public, single-line). `ODB_ADMIN_ROLES`/`ODB_ADMIN_USERS` set admins in env.
-- Argument interpolation (passing the rest of the Discord message into the command) is not
-  done yet — commands run their fixed `rcon` text. Planned.
+- Admin-gating, multiline, and args need the **YAML file**; env mode (`ODB_COMMANDS`) is
+  the simple subset (public, single-line). `ODB_ADMIN_ROLES`/`ODB_ADMIN_USERS` set admins.
+- **Arguments:** set `args: true` to interpolate the message into `rcon`: `{args}` (all
+  words after the trigger), `{1}`/`{2}`/… (positional), `{user}` (sender name). Example:
+  `args: true`, `rcon: "/kick {1}"` → `!kick Bob` runs `/kick Bob`. User input is
+  sanitized (newlines/control chars stripped, length-capped) so it can't inject a second
+  RCON command — but a template like `/silent-command {args}` still hands users Lua, so
+  keep arg commands `admin: true` unless the RCON command is safe.
 
 ## 3. Transports: how the bridge reads game events
 

@@ -46,9 +46,10 @@ discord:
     - trigger: "!players"
       rcon: "/players online"
 
-    - trigger: "!kick"           # admin-only example
+    - trigger: "!kick"           # admin-only, takes an argument
       admin: true
-      rcon: "/kick {player}"     # note: args are not interpolated yet; see docs
+      args: true                 # interpolate {1}/{args}/{user} from the message
+      rcon: "/kick {1}"          # "!kick Bob" -> "/kick Bob"
 
     - trigger: "!cleanup"        # multiline script example
       admin: true

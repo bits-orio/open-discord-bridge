@@ -103,6 +103,7 @@ type Command struct {
 	Trigger string `yaml:"trigger"`
 	Rcon    string `yaml:"rcon"`
 	Admin   bool   `yaml:"admin"`
+	Args    bool   `yaml:"args"` // opt-in: interpolate {args}/{1}.../{user} from the message
 }
 
 // Load reads and validates configuration. If the config file is absent, it builds the

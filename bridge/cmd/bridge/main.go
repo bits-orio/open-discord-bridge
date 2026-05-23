@@ -8,7 +8,9 @@ import (
 	"log"
 	"net/http"
 	"os/signal"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -56,7 +58,16 @@ func main() {
 				dc.Send(msg.ChannelID, fmt.Sprintf(":no_entry: `%s` is admin-only.", cmd.Trigger))
 				return
 			}
-			resp, err := rc.Execute(cmd.Rcon)
+			rconCmd := cmd.Rcon
+			if cmd.Args {
+				argv := commandArgs(msg.Message)
+				if len(argv) == 0 {
+					dc.Send(msg.ChannelID, fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger))
+					return
+				}
+				rconCmd = interpolate(cmd.Rcon, argv, msg.User)
+			}
+			resp, err := rc.Execute(rconCmd)
 			if err != nil {
 				log.Printf("rcon: command %q failed: %v", cmd.Trigger, err)
 				return
@@ -418,6 +429,51 @@ func firstWord(s string) string {
 		return f[0]
 	}
 	return ""
+}
+
+// commandArgs returns the whitespace-separated tokens after the command trigger.
+func commandArgs(s string) []string {
+	f := strings.Fields(s)
+	if len(f) <= 1 {
+		return nil
+	}
+	return f[1:]
+}
+
+var placeholderRe = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+
+// interpolate substitutes {args} (all args), {1}.. (positional), and {user} into an
+// admin-authored template. Only called for commands with args:true. Substituted values
+// are sanitized (control chars/newlines stripped, length-capped) so user input can't
+// inject a second RCON line.
+func interpolate(template string, args []string, user string) string {
+	return placeholderRe.ReplaceAllStringFunc(template, func(m string) string {
+		token := m[1 : len(m)-1]
+		switch token {
+		case "args":
+			return sanitizeArg(strings.Join(args, " "))
+		case "user":
+			return sanitizeArg(user)
+		default:
+			if n, err := strconv.Atoi(token); err == nil && n >= 1 && n <= len(args) {
+				return sanitizeArg(args[n-1])
+			}
+			return "" // unknown token or missing positional
+		}
+	})
+}
+
+func sanitizeArg(s string) string {
+	s = strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\r' || r < 0x20 {
+			return -1
+		}
+		return r
+	}, s)
+	if len(s) > 200 {
+		s = s[:200]
+	}
+	return s
 }
 
 // str renders a JSON value as a tidy string (whole-number floats lose the decimal).
