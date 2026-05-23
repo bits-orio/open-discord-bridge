@@ -105,6 +105,19 @@ func main() {
 		log.Printf("bridge: companion mod not reachable over RCON yet (will retry on demand)")
 	}
 
+	// Route an event to its channel and post it (embed or plain text).
+	emit := func(ev Event) {
+		channel, ok := rt.Channel(ev.Event)
+		if !ok {
+			return
+		}
+		if cfg.Discord.Embed {
+			dc.SendEmbed(channel, formatEvent(ev), eventColor(ev.Event))
+		} else {
+			dc.Send(channel, formatEvent(ev))
+		}
+	}
+
 	// Game → Discord.
 	var lastEvent atomic.Int64
 	var tail *transport.Tailer
@@ -127,15 +140,7 @@ func main() {
 			return
 		}
 		lastEvent.Store(time.Now().Unix())
-		channel, ok := rt.Channel(ev.Event)
-		if !ok {
-			return // no route for this event; drop silently
-		}
-		if cfg.Discord.Embed {
-			dc.SendEmbed(channel, formatEvent(ev), eventColor(ev.Event))
-		} else {
-			dc.Send(channel, formatEvent(ev))
-		}
+		emit(ev)
 	}
 
 	// baseCtx lets the Control API request a restart (clean exit → supervisor restarts).
@@ -144,6 +149,17 @@ func main() {
 	ctx, stop := signal.NotifyContext(baseCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	go tail.Run(ctx, onLine)
+
+	// Watch the bridge↔Factorio link (RCON + mod handshake) and announce transitions.
+	if cfg.Discord.AnnounceStatus {
+		go monitorConnection(ctx, rc, func(connected bool, version string) {
+			if connected {
+				emit(Event{Event: "bridge.established", Data: map[string]any{"version": version}})
+			} else {
+				emit(Event{Event: "bridge.disconnected"})
+			}
+		})
+	}
 
 	// Open Control API (off by default).
 	if cfg.ControlAPI.Enabled {
@@ -197,6 +213,40 @@ func main() {
 
 	<-ctx.Done()
 	log.Printf("bridge: shutting down")
+}
+
+// monitorConnection polls the RCON+mod handshake and reports connect/disconnect
+// transitions via announce. The initial state is announced only if connected (so a bridge
+// started before Factorio doesn't post a spurious "disconnected").
+func monitorConnection(ctx context.Context, rc *rcon.Client, announce func(connected bool, version string)) {
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	var last *bool
+	check := func() {
+		version := queryModVersion(rc)
+		cur := version != ""
+		switch {
+		case last == nil:
+			if cur {
+				announce(true, version)
+			}
+			last = &cur
+		case *last != cur:
+			announce(cur, version)
+			*last = cur
+		}
+	}
+
+	check() // immediate, so a healthy start announces "established" right away
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			check()
+		}
+	}
 }
 
 // queryModVersion asks the companion mod for its version over RCON ("" if unreachable).
@@ -350,6 +400,13 @@ func formatEvent(ev Event) string {
 		return fmt.Sprintf(":microscope: Research complete: **%s**", str(d["tech_name"]))
 	case "vanilla.game_started":
 		return ":satellite: Server is online."
+	case "bridge.established":
+		if v := str(d["version"]); v != "" {
+			return fmt.Sprintf(":green_circle: **Open Discord Bridge established** — connected to Factorio (mod v%s)", v)
+		}
+		return ":green_circle: **Open Discord Bridge established** — connected to Factorio"
+	case "bridge.disconnected":
+		return ":red_circle: **Open Discord Bridge disconnected** — lost contact with Factorio"
 	default:
 		return formatGeneric(ev.Event, d)
 	}
@@ -507,6 +564,10 @@ func eventColor(eventKey string) int {
 		return 0x9B59B6 // purple
 	case "vanilla.game_started":
 		return 0x1ABC9C // teal
+	case "bridge.established":
+		return 0x57F287 // green
+	case "bridge.disconnected":
+		return 0xED4245 // red
 	default:
 		// Any other event (mts.*, oarc.*, custom.*) gets a stable, distinct color
 		// derived from its key — no per-mod hardcoding, but each event type looks

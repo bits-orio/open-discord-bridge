@@ -1,6 +1,22 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+func TestBridgeStatusFormatting(t *testing.T) {
+	if eventColor("bridge.established") != 0x57F287 {
+		t.Error("established should be green")
+	}
+	if eventColor("bridge.disconnected") != 0xED4245 {
+		t.Error("disconnected should be red")
+	}
+	got := formatEvent(Event{Event: "bridge.established", Data: map[string]any{"version": "0.1.0"}})
+	if !strings.Contains(got, "established") || !strings.Contains(got, "0.1.0") {
+		t.Errorf("established message wrong: %q", got)
+	}
+}
 
 func TestHumanizeKey(t *testing.T) {
 	cases := map[string]string{

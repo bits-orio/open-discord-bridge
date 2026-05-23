@@ -57,6 +57,7 @@ env vars and no file is mounted.
 | `DISCORD_BOT_TOKEN` | Discord bot token (**secret**) | — (required) |
 | `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
 | `ODB_EMBED` | Render events as colored embeds instead of plain text | `false` |
+| `ODB_ANNOUNCE_STATUS` | Post bridge↔Factorio connect/disconnect to Discord | `false` |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
 | `ODB_ROUTES` | Explicit routes: `source=channel_id,source=channel_id` | — |
 | `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` (public, single-line only) | — |
@@ -285,6 +286,10 @@ Reference artifacts:
 - **Shutdown:** graceful on `SIGINT`/`SIGTERM`.
 - **Restart:** `POST /v1/restart` performs a clean exit; a supervisor (systemd
   `Restart=always`, Docker/Pterodactyl restart policy) brings it back with fresh config.
+- **Connection announcements:** with `discord.announce_status` (or `ODB_ANNOUNCE_STATUS`),
+  the bridge polls the RCON+mod handshake every ~15s and posts `bridge.established` /
+  `bridge.disconnected` to Discord when the link to Factorio comes up or drops. They route
+  like any event (under `bridge.*`), so a catch-all `*` route covers them.
 - **Control API:** `GET /v1/status` (health, mod version, event catalog), `GET/POST
   /v1/config` (live routing reload), `/v1/discord/guilds`, `/v1/discord/channels`,
   `POST /v1/test`. Contract: [`bridge/pkg/controlapi/spec/openapi.yaml`](bridge/pkg/controlapi/spec/openapi.yaml).

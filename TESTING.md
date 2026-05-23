@@ -82,6 +82,12 @@ curl -s -H "Authorization: Bearer $BRIDGE_CONTROL_TOKEN" :7777/v1/status | pytho
 - [ ] `POST /v1/test` → `{outbound_ok, inbound_ok}`
 - [ ] `POST /v1/restart` → 202, process exits (supervisor restarts it)
 
+## 9b. Connection announcements (optional)
+- [ ] Set `discord.announce_status: true` (or `ODB_ANNOUNCE_STATUS=true`), restart with
+      Factorio up → a green **"Open Discord Bridge established"** posts to the channel
+- [ ] Stop Factorio (leave the bridge running) → within ~15s a red **"disconnected"** posts
+- [ ] Start Factorio again → **"established"** posts again (no spam in between)
+
 ## 10. Resilience
 - [ ] Restart the Factorio server while the bridge runs → bridge reconnects RCON; events
       resume after the mod truncates `events.jsonl`
