@@ -73,6 +73,19 @@ env vars and no file is mounted.
 Provide routes via **either** `ODB_DISCORD_CHANNEL_ID` (simple, one channel) **or**
 `ODB_ROUTES` (e.g. `vanilla.chat=111,mts.*=222,*=111`).
 
+### Which setup path? (also pick one)
+
+How you actually supply the config depends on how you run the bridge — these are
+alternatives, not steps:
+
+- **Self-hosting with a shell** (bare metal, your own Docker) → run **`./setup.sh`** (the
+  guided wizard: validate token, pick server + channel, write `bridge.yaml` + `.env`), or
+  hand-edit the files. *File mode.*
+- **On a hosting panel** (Pterodactyl) → import **`deploy/pterodactyl-egg.json`** and fill
+  its variables in the panel UI. *Env-var mode; the wizard is not used here.*
+- **A managed portal** (e.g. AleForge) → the portal embeds the wizard library and presents
+  its own UI; end users configure nothing by hand.
+
 ---
 
 ## 2. Discord → RCON commands

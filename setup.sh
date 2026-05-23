@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Interactive setup wizard: validate your Discord bot token, pick a server + channel, and
 # write bridge/bridge.yaml + bridge/.env. Run this for guided configuration.
+#
+# For self-hosters with shell access (bare metal or your own Docker). On a hosting panel
+# like Pterodactyl, use the egg's variables instead (deploy/pterodactyl-egg.json).
 # (To build the bridge and link the mod, use ./install.sh.)
 set -euo pipefail
 

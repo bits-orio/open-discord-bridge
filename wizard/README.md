@@ -4,6 +4,12 @@ Go library + standalone CLI for guided setup: validate the bot token, generate t
 URL, pick a guild and channel, and write `bridge.yaml` + `.env`. Any portal can embed the
 library (`package wizard`); self-hosters run the CLI.
 
+**Who this is for:** self-hosters who run the bridge with **shell access** (bare metal or
+their own Docker) — the wizard writes config files. On a hosting **panel** (Pterodactyl)
+you don't run this; you set the egg's variables in the panel UI instead (env-var config,
+see [`../deploy/pterodactyl-egg.json`](../deploy/pterodactyl-egg.json)). A managed portal
+(e.g. AleForge) embeds this same library behind its own UI.
+
 See [../PLAN.md](../PLAN.md) for full design.
 
 ## CLI
