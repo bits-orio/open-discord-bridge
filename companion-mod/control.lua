@@ -67,9 +67,11 @@ end
 -- ─── Storage / custom event id ───────────────────────────────────────────────
 
 local function ensure_storage()
-  storage.odb         = storage.odb or {}
-  storage.odb.sources = storage.odb.sources or {}
-  storage.odb.links   = storage.odb.links or {}
+  storage.odb              = storage.odb or {}
+  storage.odb.sources      = storage.odb.sources or {}
+  storage.odb.links        = storage.odb.links or {}   -- player_name -> { discord_id, discord_name }
+  storage.odb.pending      = storage.odb.pending or {} -- link code -> { player, expires }
+  storage.odb.link_counter = storage.odb.link_counter or 0
 end
 
 script.on_init(ensure_storage)
@@ -104,9 +106,10 @@ remote.add_interface(INTERFACE, {
     handle_incoming(args)
   end,
 
-  -- Player-link query (linking flow itself is Phase 2).
+  -- Returns the linked Discord user ID for a player, or nil.
   linked_discord_id = function(player_name)
-    return storage.odb.links[player_name]
+    local link = storage.odb.links and storage.odb.links[player_name]
+    return link and link.discord_id or nil
   end,
 })
 
@@ -132,6 +135,66 @@ commands.add_command("odb-status", "Open Discord Bridge: report mod status as JS
     interface   = INTERFACE,
     sources     = (storage.odb and storage.odb.sources) or {},
   }))
+end)
+
+-- ─── Player linking (Discord ↔ Factorio) ─────────────────────────────────────
+-- A player runs /odb-link in-game to get a short code, then runs the bridge's link
+-- command in Discord (e.g. "!link CODE"), which calls /odb-confirm-link over RCON with
+-- the Discord user id/name. The code is derived deterministically (no math.random, so
+-- it's multiplayer-safe) and is short-lived.
+
+local LINK_TTL_TICKS = 60 * 60 -- ~60 seconds
+local CODE_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+local function make_link_code(counter)
+  local mixed = (counter * 2654435761 + game.tick) % 2176782336 -- 36^6
+  local code = ""
+  for _ = 1, 6 do
+    local r = mixed % 36
+    code = string.sub(CODE_CHARS, r + 1, r + 1) .. code
+    mixed = math.floor(mixed / 36)
+  end
+  return code
+end
+
+-- /odb-link — run by a player in-game to start linking their Discord account.
+commands.add_command("odb-link", "Get a code to link your Discord account", function(cmd)
+  local player = cmd.player_index and game.get_player(cmd.player_index)
+  if not player then return end -- must be a player (not RCON)
+  storage.odb.pending = storage.odb.pending or {}
+  storage.odb.link_counter = (storage.odb.link_counter or 0) + 1
+  local code = make_link_code(storage.odb.link_counter)
+  storage.odb.pending[code] = { player = player.name, expires = game.tick + LINK_TTL_TICKS }
+  player.print("[Discord link] Code: " .. code
+    .. " — in Discord run:  !link " .. code .. "   (expires in ~60s)")
+end)
+
+-- /odb-confirm-link <code> <discord_id> <discord_name...> — called by the bridge over RCON.
+commands.add_command("odb-confirm-link", "Open Discord Bridge: confirm a player link (RCON)", function(cmd)
+  if cmd.player_index then return end -- RCON / server only
+  local code, discord_id, discord_name =
+    string.match(cmd.parameter or "", "^(%S+)%s+(%S+)%s*(.*)$")
+  if not code then
+    rcon.print("ERROR: usage /odb-confirm-link <code> <discord_id> <name>")
+    return
+  end
+  code = string.upper(code)
+  storage.odb.pending = storage.odb.pending or {}
+  storage.odb.links = storage.odb.links or {}
+  local pend = storage.odb.pending[code]
+  if not pend then
+    rcon.print("That link code is invalid or already used.")
+    return
+  end
+  storage.odb.pending[code] = nil
+  if game.tick > pend.expires then
+    rcon.print("That link code has expired — run /odb-link in-game again.")
+    return
+  end
+  storage.odb.links[pend.player] = { discord_id = discord_id, discord_name = discord_name }
+  local who = (discord_name ~= "" and discord_name) or discord_id
+  game.print("[color=114,137,218][Discord][/color] " .. pend.player .. " linked to " .. who)
+  rcon.print("Linked " .. pend.player .. " to Discord user " .. who .. ".")
 end)
 
 -- ─── Baseline layer: vanilla events ──────────────────────────────────────────

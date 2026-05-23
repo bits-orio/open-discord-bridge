@@ -47,6 +47,10 @@ discord:
     - trigger: "!players"
       rcon: "/players online"
 
+    - trigger: "!link"           # link a Discord account to an in-game player
+      args: true                 # in-game run /odb-link to get CODE, then "!link CODE"
+      rcon: "/odb-confirm-link {1} {userid} {user}"
+
     - trigger: "!kick"           # admin-only, takes an argument
       admin: true
       args: true                 # interpolate {1}/{args}/{user} from the message

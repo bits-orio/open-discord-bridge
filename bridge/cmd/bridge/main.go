@@ -55,7 +55,7 @@ func main() {
 	onInbound := func(msg discord.InboundMessage) {
 		if cmd, ok := cmdMap[firstWord(msg.Message)]; ok {
 			isAdmin := resolveAdmin(cfg.Discord.Admins, msg)
-			if reply := runCommand(rc, cmd, isAdmin, commandArgs(msg.Message), msg.User); reply != "" {
+			if reply := runCommand(rc, cmd, isAdmin, commandArgs(msg.Message), msg.User, msg.UserID); reply != "" {
 				dc.Send(msg.ChannelID, reply)
 			}
 			return
@@ -85,7 +85,7 @@ func main() {
 			isAdmin := resolveAdmin(cfg.Discord.Admins, discord.InboundMessage{
 				UserID: inv.UserID, Roles: inv.Roles, IsAdmin: inv.IsAdmin,
 			})
-			return runCommand(rc, cmd, isAdmin, strings.Fields(inv.Args), inv.User)
+			return runCommand(rc, cmd, isAdmin, strings.Fields(inv.Args), inv.User, inv.UserID)
 		})
 	}
 
@@ -406,7 +406,7 @@ func kvSummary(data map[string]any) string {
 // runCommand executes a configured command (shared by the text and slash paths) and
 // returns the reply text to post ("" = nothing to post). Enforces admin gating and, for
 // args:true commands, interpolation + a usage hint.
-func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string, user string) string {
+func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string, user, userID string) string {
 	if cmd.Admin && !isAdmin {
 		return fmt.Sprintf(":no_entry: `%s` is admin-only.", cmd.Trigger)
 	}
@@ -415,7 +415,7 @@ func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string
 		if len(argv) == 0 {
 			return fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger)
 		}
-		rconCmd = interpolate(cmd.Rcon, argv, user)
+		rconCmd = interpolate(cmd.Rcon, argv, user, userID)
 	}
 	resp, err := rc.Execute(rconCmd)
 	if err != nil {
@@ -531,7 +531,7 @@ var placeholderRe = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
 // admin-authored template. Only called for commands with args:true. Substituted values
 // are sanitized (control chars/newlines stripped, length-capped) so user input can't
 // inject a second RCON line.
-func interpolate(template string, args []string, user string) string {
+func interpolate(template string, args []string, user, userID string) string {
 	return placeholderRe.ReplaceAllStringFunc(template, func(m string) string {
 		token := m[1 : len(m)-1]
 		switch token {
@@ -539,6 +539,8 @@ func interpolate(template string, args []string, user string) string {
 			return sanitizeArg(strings.Join(args, " "))
 		case "user":
 			return sanitizeArg(user)
+		case "userid":
+			return sanitizeArg(userID)
 		default:
 			if n, err := strconv.Atoi(token); err == nil && n >= 1 && n <= len(args) {
 				return sanitizeArg(args[n-1])

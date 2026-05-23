@@ -130,6 +130,17 @@ registered as native slash commands (e.g. `/players`, `/ban`) — `admin: true` 
 gated by Discord's own permissions, and `args: true` ones get an `args` option. The bot
 needs the `applications.commands` scope (the wizard's invite URL includes it).
 
+**Player linking:** the companion mod can map Discord users ↔ Factorio players. A player
+runs `/odb-link` in-game to get a short code, then runs your link command in Discord
+(e.g. `!link CODE`). Wire it as a normal command using the `{userid}` token:
+```yaml
+- trigger: "!link"
+  args: true
+  rcon: "/odb-confirm-link {1} {userid} {user}"
+```
+Other mods read the mapping via `remote.call("open-discord-bridge-v1", "linked_discord_id",
+player_name)`. (`{userid}` is the Discord user ID; `{user}` is their name.)
+
 **Notes:**
 - Anyone in the channel can run **public** commands — keep destructive ones `admin: true`.
 - `rcon` may be **multiline** (a `/silent-command` script); it's sent as a single RCON call.
