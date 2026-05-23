@@ -4,8 +4,9 @@
 /bridge/bridge.yaml
 /bridge/bridge.sftp.yaml
 
-# Built binary
+# Built binaries
 /bridge/odb-bridge
+/wizard/odb-wizard
 
 # Generated local test rig (save, mods symlink, server settings)
 /.run/

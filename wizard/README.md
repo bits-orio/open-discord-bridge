@@ -8,6 +8,14 @@ See [../PLAN.md](../PLAN.md) for full design.
 
 ## CLI
 
+Easiest — from the repo root (builds the wizard and runs it, writing into `bridge/`):
+
+```sh
+./setup.sh
+```
+
+Or build/run directly:
+
 ```sh
 cd wizard
 go build -o odb-wizard ./cmd/wizard

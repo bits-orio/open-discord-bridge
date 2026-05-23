@@ -155,7 +155,8 @@ Bridge and Factorio on the same machine; Local transport over loopback RCON.
 
 ```sh
 ./install.sh          # builds the bridge, links the mod, writes config + server-settings
-# edit bridge/.env (DISCORD_BOT_TOKEN) and bridge/bridge.yaml (channel_id)
+./setup.sh            # guided wizard: validate token, pick server/channel, write config
+                      # (or edit bridge/.env + bridge/bridge.yaml by hand instead)
 ./start-all.sh        # launches Factorio + the bridge
 ```
 Or run the bridge by hand: `./bridge/odb-bridge -config bridge/bridge.yaml`.

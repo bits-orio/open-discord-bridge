@@ -106,10 +106,13 @@ Getting the channel ID (for bridge.yaml):
   Right-click your target channel -> "Copy Channel ID".
 
 ────────────────────────────────────────────────────────────────────────────
-Then:
-  1. Edit bridge/.env        -> set DISCORD_BOT_TOKEN
-  2. Edit bridge/bridge.yaml  -> set both channel_id values to your channel ID
-  3. ./start-all.sh           -> launches Factorio + the bridge together
+Then configure — either the guided wizard:
+  ./setup.sh                  -> validate token, pick server + channel, write config
+or by hand:
+  1. Edit bridge/.env         -> set DISCORD_BOT_TOKEN
+  2. Edit bridge/bridge.yaml   -> set the channel_id
 
-(Or run ./start-server.sh and bridge/odb-bridge separately.)
+Finally:
+  ./start-all.sh              -> launches Factorio + the bridge together
+  (or ./start-server.sh and ./start-bridge.sh separately.)
 EOF
