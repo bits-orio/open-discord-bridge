@@ -86,11 +86,21 @@ end
 -- ─── Storage / custom event id ───────────────────────────────────────────────
 
 local function ensure_storage()
-  storage.odb              = storage.odb or {}
-  storage.odb.sources      = storage.odb.sources or {}
-  storage.odb.links        = storage.odb.links or {}   -- player_name -> { discord_id, discord_name }
-  storage.odb.pending      = storage.odb.pending or {} -- link code -> { player, expires }
-  storage.odb.link_counter = storage.odb.link_counter or 0
+  storage.odb                  = storage.odb or {}
+  storage.odb.sources          = storage.odb.sources or {}
+  storage.odb.links            = storage.odb.links or {}   -- player_name -> { discord_id, discord_name }
+  storage.odb.pending          = storage.odb.pending or {} -- link code -> { player, expires }
+  storage.odb.link_counter     = storage.odb.link_counter or 0
+  storage.odb.baseline_disabled = storage.odb.baseline_disabled or {} -- vanilla event key -> true
+end
+
+-- baseline emits a built-in vanilla.* event unless an integrator has disabled that key via
+-- the set_baseline interface (so e.g. MTS can own research announcements with team info).
+local function baseline(key, data, surface_name)
+  if storage.odb and storage.odb.baseline_disabled and storage.odb.baseline_disabled[key] then
+    return
+  end
+  write_event("vanilla." .. key, data, surface_name)
 end
 
 script.on_init(ensure_storage)
@@ -110,6 +120,18 @@ remote.add_interface(INTERFACE, {
   register_source = function(args)
     if type(args) ~= "table" or type(args.namespace) ~= "string" then return end
     storage.odb.sources[args.namespace] = args.events or {}
+  end,
+
+  -- Enable/disable a built-in baseline event (e.g. "research_finished") so an integrator
+  -- can announce it itself with richer context. { event = "research_finished", enabled = false }
+  set_baseline = function(args)
+    if type(args) ~= "table" or type(args.event) ~= "string" then return end
+    storage.odb.baseline_disabled = storage.odb.baseline_disabled or {}
+    if args.enabled == false then
+      storage.odb.baseline_disabled[args.event] = true
+    else
+      storage.odb.baseline_disabled[args.event] = nil
+    end
   end,
 
   -- Return a custom event id for subscription (Factorio custom-event pattern).
@@ -306,13 +328,13 @@ script.on_event(defines.events.on_console_chat, function(e)
   if not e.player_index then return end
   local player = game.get_player(e.player_index)
   if not player then return end
-  write_event("vanilla.chat", { player = player.name, message = e.message }, player.surface.name)
+  baseline("chat", { player = player.name, message = e.message }, player.surface.name)
 end)
 
 script.on_event(defines.events.on_player_joined_game, function(e)
   local player = game.get_player(e.player_index)
   if not player then return end
-  write_event("vanilla.player_joined", {
+  baseline("player_joined", {
     player       = player.name,
     online_count = #game.connected_players,
   })
@@ -321,7 +343,7 @@ end)
 script.on_event(defines.events.on_player_left_game, function(e)
   local player = game.get_player(e.player_index)
   if not player then return end
-  write_event("vanilla.player_left", {
+  baseline("player_left", {
     player       = player.name,
     reason       = e.reason,
     online_count = #game.connected_players,
@@ -336,13 +358,13 @@ script.on_event(defines.events.on_player_died, function(e)
     cause = (e.cause.type == "character" and e.cause.player and e.cause.player.name)
       or e.cause.name
   end
-  write_event("vanilla.player_died", { player = player.name, cause = cause }, player.surface.name)
+  baseline("player_died", { player = player.name, cause = cause }, player.surface.name)
 end)
 
 script.on_event(defines.events.on_rocket_launched, function(e)
   local rocket = e.rocket
   if not (rocket and rocket.valid) then return end
-  write_event("vanilla.rocket_launched", {
+  baseline("rocket_launched", {
     surface       = rocket.surface.name,
     flight_count  = rocket.force.rockets_launched,
   }, rocket.surface.name)
@@ -351,7 +373,7 @@ end)
 script.on_event(defines.events.on_research_finished, function(e)
   local research = e.research
   if not research then return end
-  write_event("vanilla.research_finished", { tech_name = research.name, level = research.level })
+  baseline("research_finished", { tech_name = research.name, level = research.level })
 end)
 
 -- Emit one game_started event per session (server start / load). on_tick MUST stay
@@ -366,7 +388,7 @@ script.on_event(defines.events.on_tick, function()
     return
   end
   game_started_emitted = true
-  write_event("vanilla.game_started", {
+  baseline("game_started", {
     online_count = #game.connected_players,
   })
 end)

@@ -113,7 +113,8 @@ func main() {
 			return
 		}
 		if cfg.Discord.Embed && !isChatEvent(ev.Event) {
-			dc.SendEmbed(channel, formatEvent(ev), eventColor(ev.Event))
+			title, desc := formatEmbed(ev)
+			dc.SendEmbed(channel, title, desc, eventColor(ev.Event))
 		} else {
 			dc.Send(channel, formatEvent(ev))
 		}
@@ -552,28 +553,46 @@ func formatEvent(ev Event) string {
 	}
 }
 
-// formatGeneric renders any non-baseline event (mts.*, oarc.*, custom.*, ...) without
-// hardcoding mod knowledge: a humanized "[namespace → event]" label, followed by the
-// integrator-supplied "text" sentence if present, else a readable key=value summary.
+// formatGeneric renders a non-baseline event (mts.*, oarc.*, custom.*, ...) for plain-text
+// mode: a humanized "[namespace → event]" label plus the body.
 func formatGeneric(eventKey string, data map[string]any) string {
-	label := humanizeKey(eventKey)
-	if s := firstString(data, "text", "message"); s != "" {
-		return label + " " + s
+	if body := genericBody(data); body != "" {
+		return humanizeKey(eventKey) + " " + body
 	}
-	if kv := kvSummary(data); kv != "" {
-		return label + " " + kv
-	}
-	return label
+	return humanizeKey(eventKey)
 }
 
-// humanizeKey turns "mts.team_created" into "[mts → team created]" and a key with no
-// namespace like "custom" into "[custom]".
-func humanizeKey(eventKey string) string {
+// genericBody is an event's human text: the integrator-supplied "text"/"message", else a
+// readable key=value summary.
+func genericBody(data map[string]any) string {
+	if s := firstString(data, "text", "message"); s != "" {
+		return s
+	}
+	return kvSummary(data)
+}
+
+// eventLabel turns "mts.team_created" into "mts → team created" (no brackets).
+func eventLabel(eventKey string) string {
 	ns, name, found := strings.Cut(eventKey, ".")
 	if !found {
-		return "[" + strings.ReplaceAll(ns, "_", " ") + "]"
+		return strings.ReplaceAll(ns, "_", " ")
 	}
-	return fmt.Sprintf("[%s → %s]", ns, strings.ReplaceAll(name, "_", " "))
+	return fmt.Sprintf("%s → %s", ns, strings.ReplaceAll(name, "_", " "))
+}
+
+// humanizeKey is the bracketed label for plain text, e.g. "[mts → team created]".
+func humanizeKey(eventKey string) string { return "[" + eventLabel(eventKey) + "]" }
+
+// formatEmbed returns the (title, description) for an event's embed. Generic events use
+// the humanized label as a bold title and the sentence as the body, so the category
+// stands out. The bridge's own vanilla.*/bridge.* one-liners stay as the description.
+func formatEmbed(ev Event) (title, description string) {
+	switch ns, _, _ := strings.Cut(ev.Event, "."); ns {
+	case "vanilla", "bridge":
+		return "", formatEvent(ev)
+	default:
+		return eventLabel(ev.Event), genericBody(ev.Data)
+	}
 }
 
 func firstString(data map[string]any, keys ...string) string {

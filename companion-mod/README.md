@@ -42,6 +42,10 @@ if remote.interfaces["open-discord-bridge-v1"] then
     namespace = "mts",
     events = { { key = "team_milestone", description = "Team production milestone" } },
   })
+
+  -- Take over a built-in baseline event: disable it here and emit your own richer
+  -- version (e.g. MTS owns research so it can include the team).
+  remote.call("open-discord-bridge-v1", "set_baseline", { event = "research_finished", enabled = false })
 end
 
 -- Chat vs notable events: name a chat-style relay event "<namespace>.chat" (e.g.

@@ -70,6 +70,11 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 ## 7. MTS integration (run with multi-team-support loaded)
 - [ ] Claim a team → `[mts → team created]` / `[mts → player joined team]` in Discord
 - [ ] Produce first science → `[mts → milestone first] <team> was the first to …`
+- [ ] **Research is team-aware:** completing a tech posts `<team> researched <tech>` (from
+      MTS), and you do **not** also get a plain team-less `Research complete:` line (MTS
+      disables the baseline research event)
+- [ ] **Embed styling:** with `embed: true`, mts.* events show the label as the embed
+      **title** (bold) with the sentence below, each in its category color
 
 ## 8. Transports
 - [ ] **Local** (default) — events flow as above

@@ -20,6 +20,25 @@ func TestIsChatEvent(t *testing.T) {
 	}
 }
 
+func TestFormatEmbed(t *testing.T) {
+	// Generic event: label becomes the title, sentence the body.
+	title, desc := formatEmbed(Event{
+		Event: "mts.milestone_first",
+		Data:  map[string]any{"text": "Team 01 was the first to produce automation-science-pack"},
+	})
+	if title != "mts → milestone first" {
+		t.Errorf("title = %q", title)
+	}
+	if desc != "Team 01 was the first to produce automation-science-pack" {
+		t.Errorf("desc = %q", desc)
+	}
+	// Vanilla event: no title, the one-liner is the body.
+	title, desc = formatEmbed(Event{Event: "vanilla.player_joined", Data: map[string]any{"player": "Bob", "online_count": float64(1)}})
+	if title != "" || !strings.Contains(desc, "Bob") {
+		t.Errorf("vanilla embed: title=%q desc=%q", title, desc)
+	}
+}
+
 func TestBridgeStatusFormatting(t *testing.T) {
 	if eventColor("bridge.established") != 0x57F287 {
 		t.Error("established should be green")
