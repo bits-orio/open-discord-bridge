@@ -14,6 +14,23 @@ of this guide is about running the **bridge**.
 
 ---
 
+## You only need ONE of these
+
+Don't let the length of this guide put you off — the many options exist so the bridge
+fits any setup, but **you pick exactly one path** and ignore the rest. Quick chooser:
+
+- **Running a server at home?** → bare metal (`start-all.sh`) or Docker Compose. Done.
+- **Already run Factorio in Docker?** → add the bridge as a standalone container, or use
+  the sidecar image (`deploy/Dockerfile.sidecar`).
+- **On a hosting panel (Pterodactyl)?** → sidecar (bridge + Factorio in one container) via
+  `run-sidecar.sh`, or a standalone bridge server via `deploy/pterodactyl-egg.json`.
+- **Bridge and Factorio on different machines?** → bridge-only with the SFTP transport.
+
+The one constant across every path is **RCON** (it carries Discord → game). Everything
+below is reference detail for whichever single path you chose.
+
+---
+
 ## 1. Configuration: two modes
 
 The bridge picks a mode automatically based on whether the `-config` file exists.
@@ -201,9 +218,17 @@ bridge runs alongside Factorio in the **same** container, launched by a custom s
 - The bridge binary must be present in the container (bake it into the image, or download
   it at startup).
 
+Reference artifacts:
+- **`deploy/Dockerfile.sidecar`** — a single-container image (factoriotools/factorio + the
+  bridge) whose entrypoint is `run-sidecar.sh /docker-entrypoint.sh`. Build with
+  `docker build -f deploy/Dockerfile.sidecar -t open-discord-bridge-sidecar .`; configure
+  the bridge via env vars. Adapt the base image to your own.
+- **`deploy/pterodactyl-egg.json`** — an egg for the *standalone bridge* server (separate
+  container, env-var config; SFTP or shared-mount). Import it, set the variables, point
+  `docker_images` at your published bridge image.
+
 > SFTP from a separate container is a viable fallback (set `ODB_TRANSPORT=sftp`), but
-> AleForge prefers sidecar for a self-contained, low-maintenance egg. A Pterodactyl egg is
-> a planned deliverable.
+> AleForge prefers the sidecar for a self-contained, low-maintenance setup.
 
 ---
 

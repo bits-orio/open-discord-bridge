@@ -1,0 +1,31 @@
+# Reference single-container sidecar image: factoriotools/factorio + the bridge, launched
+# together. run-sidecar.sh starts the bridge in the background, then runs the base image's
+# Factorio entrypoint in the foreground. Configure the bridge via env vars (env-var config
+# mode) — RCON is loopback and the events file is local, since both run in one container.
+#
+# Build (context = repo root):
+#   docker build -f deploy/Dockerfile.sidecar -t open-discord-bridge-sidecar:latest .
+#
+# This is a reference; adapt the base image and its entrypoint to your own Factorio image.
+
+FROM golang:1.25-alpine AS build
+WORKDIR /src
+COPY bridge/go.mod bridge/go.sum ./
+RUN go mod download
+COPY bridge/cmd ./cmd
+COPY bridge/internal ./internal
+COPY bridge/pkg ./pkg
+RUN CGO_ENABLED=0 go build -ldflags "-s -w" -o /out/odb-bridge ./cmd/bridge
+
+FROM factoriotools/factorio:stable
+COPY --from=build /out/odb-bridge /usr/local/bin/odb-bridge
+COPY run-sidecar.sh /usr/local/bin/run-sidecar.sh
+RUN chmod +x /usr/local/bin/run-sidecar.sh
+
+# Bridge resolves config from env vars (BRIDGE_CONFIG points at a path that won't exist).
+ENV BRIDGE_BIN=/usr/local/bin/odb-bridge \
+    BRIDGE_CONFIG=/etc/open-discord-bridge/none.yaml
+
+# run-sidecar.sh runs the base image's Factorio entrypoint in the foreground.
+ENTRYPOINT ["/usr/local/bin/run-sidecar.sh"]
+CMD ["/docker-entrypoint.sh"]

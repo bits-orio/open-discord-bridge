@@ -1,0 +1,158 @@
+{
+  "_comment": "Reference Pterodactyl egg for running the Open Discord Bridge as its own server (a bridge-only container). Configure via the variables below (env-var config mode). For the sidecar model — bridge co-located with Factorio in one container — use deploy/Dockerfile.sidecar with your Factorio egg instead. Adjust docker_images to your published image.",
+  "meta": {
+    "version": "PTDL_v2",
+    "update_url": null
+  },
+  "exported_at": "2026-05-23T00:00:00+00:00",
+  "name": "Open Discord Bridge",
+  "author": "bits-orio@users.noreply.github.com",
+  "description": "Mirrors Factorio chat and events to Discord. Runs as a standalone bridge container; configured entirely from environment variables.",
+  "features": null,
+  "docker_images": {
+    "Open Discord Bridge": "ghcr.io/bits-orio/open-discord-bridge:latest"
+  },
+  "file_denylist": [],
+  "startup": "-config /home/container/bridge.yaml",
+  "config": {
+    "files": "{}",
+    "startup": "{\"done\": \"connected to Discord\"}",
+    "logs": "{}",
+    "stop": "^C"
+  },
+  "scripts": {
+    "installation": {
+      "script": "#!/bin/ash\n# The bridge image is self-contained; nothing to install.\necho 'Open Discord Bridge: no install steps required.'\n",
+      "container": "alpine:3.20",
+      "entrypoint": "ash"
+    }
+  },
+  "variables": [
+    {
+      "name": "Discord bot token",
+      "description": "Bot token from the Discord developer portal.",
+      "env_variable": "DISCORD_BOT_TOKEN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string"
+    },
+    {
+      "name": "RCON password",
+      "description": "Factorio RCON password (must match the server).",
+      "env_variable": "FACTORIO_RCON_PASSWORD",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string"
+    },
+    {
+      "name": "RCON address",
+      "description": "Factorio RCON host:port. Loopback for a sidecar; the server's network address for a separate container.",
+      "env_variable": "ODB_RCON_ADDRESS",
+      "default_value": "127.0.0.1:27015",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string"
+    },
+    {
+      "name": "Events file path",
+      "description": "Path to the companion mod's events.jsonl (local path, or remote path when transport is sftp).",
+      "env_variable": "ODB_EVENTS_FILE",
+      "default_value": "/factorio/script-output/open-discord-bridge/events.jsonl",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string"
+    },
+    {
+      "name": "Discord channel ID",
+      "description": "Catch-all channel for all events (shortcut). For per-event routing use ODB_ROUTES instead.",
+      "env_variable": "ODB_DISCORD_CHANNEL_ID",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Routes",
+      "description": "Optional explicit routes: source=channel_id,source=channel_id (e.g. vanilla.chat=111,mts.*=222,*=111).",
+      "env_variable": "ODB_ROUTES",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Transport",
+      "description": "How the bridge reads the events file: local (shared filesystem) or sftp (remote).",
+      "env_variable": "ODB_TRANSPORT",
+      "default_value": "local",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:local,sftp"
+    },
+    {
+      "name": "SFTP host",
+      "description": "SFTP host:port (only when transport is sftp).",
+      "env_variable": "ODB_SFTP_HOST",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "SFTP user",
+      "description": "SFTP username (only when transport is sftp).",
+      "env_variable": "ODB_SFTP_USER",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "SFTP key path",
+      "description": "Path to the SFTP private key inside the container (only when transport is sftp).",
+      "env_variable": "ODB_SFTP_KEY_PATH",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Control API enabled",
+      "description": "Serve the HTTP Control API (/v1/*).",
+      "env_variable": "ODB_CONTROL_API_ENABLED",
+      "default_value": "false",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:true,false"
+    },
+    {
+      "name": "Control API token",
+      "description": "Bearer token for the Control API (required if enabled).",
+      "env_variable": "BRIDGE_CONTROL_TOKEN",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Admin role IDs",
+      "description": "Comma-separated Discord role IDs treated as admin (for admin-only commands).",
+      "env_variable": "ODB_ADMIN_ROLES",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Admin user IDs",
+      "description": "Comma-separated Discord user IDs treated as admin.",
+      "env_variable": "ODB_ADMIN_USERS",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    }
+  ]
+}
