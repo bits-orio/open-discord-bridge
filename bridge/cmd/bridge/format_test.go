@@ -46,10 +46,22 @@ func TestFirstWord(t *testing.T) {
 
 func TestEventColor(t *testing.T) {
 	if eventColor("vanilla.player_died") != 0xED4245 {
-		t.Error("death should be red")
+		t.Error("death should keep its intentional red")
 	}
-	if eventColor("mts.team_created") != eventColor("anything.else") {
-		t.Error("non-vanilla events should share the neutral color")
+	// Non-vanilla events get a stable, distinct color per key (no hardcoding).
+	if eventColor("mts.team_created") != eventColor("mts.team_created") {
+		t.Error("color must be deterministic for a given key")
+	}
+	seen := map[int]bool{}
+	for _, k := range []string{"mts.team_created", "mts.team_released", "oarc.spawn", "custom.x"} {
+		c := eventColor(k)
+		if c < 0 || c > 0xFFFFFF {
+			t.Errorf("color out of range for %q: %#x", k, c)
+		}
+		seen[c] = true
+	}
+	if len(seen) < 2 {
+		t.Error("distinct event keys should map to distinct colors")
 	}
 }
 

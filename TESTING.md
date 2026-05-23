@@ -43,7 +43,10 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 
 ## 6. Embeds (optional)
 - [ ] Set `discord.embed: true` (or `ODB_EMBED=true`), restart → events render as colored
-      embeds (join green, death red, rocket blue, mts.* neutral)
+      embeds (vanilla: join green, death red, rocket blue, …)
+- [ ] Each non-vanilla event type gets its own **stable, distinct** color — e.g.
+      `mts.team_created` vs `mts.team_released` differ, and the same key is the same color
+      every time (deterministic from the key, no per-mod hardcoding)
 
 ## 7. MTS integration (run with multi-team-support loaded)
 - [ ] Claim a team → `[mts → team created]` / `[mts → player joined team]` in Discord

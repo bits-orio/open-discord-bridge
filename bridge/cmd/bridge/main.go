@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"hash/fnv"
 	"log"
+	"math"
 	"net/http"
 	"os/signal"
 	"regexp"
@@ -504,8 +506,44 @@ func eventColor(eventKey string) int {
 	case "vanilla.game_started":
 		return 0x1ABC9C // teal
 	default:
-		return 0x95A5A6 // neutral (mts.*, oarc.*, custom)
+		// Any other event (mts.*, oarc.*, custom.*) gets a stable, distinct color
+		// derived from its key — no per-mod hardcoding, but each event type looks
+		// intentionally colored and consistent.
+		return hashColor(eventKey)
 	}
+}
+
+// hashColor maps a string to a stable, pleasant color: the key's hash picks a hue, with
+// fixed saturation/lightness so every event type is distinct yet vibrant.
+func hashColor(s string) int {
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(s))
+	hue := float64(h.Sum32() % 360)
+	r, g, b := hslToRGB(hue, 0.65, 0.55)
+	return r<<16 | g<<8 | b
+}
+
+func hslToRGB(h, s, l float64) (int, int, int) {
+	c := (1 - math.Abs(2*l-1)) * s
+	hp := h / 60
+	x := c * (1 - math.Abs(math.Mod(hp, 2)-1))
+	var r, g, b float64
+	switch {
+	case hp < 1:
+		r, g, b = c, x, 0
+	case hp < 2:
+		r, g, b = x, c, 0
+	case hp < 3:
+		r, g, b = 0, c, x
+	case hp < 4:
+		r, g, b = 0, x, c
+	case hp < 5:
+		r, g, b = x, 0, c
+	default:
+		r, g, b = c, 0, x
+	}
+	m := l - c/2
+	return int((r+m)*255 + 0.5), int((g+m)*255 + 0.5), int((b+m)*255 + 0.5)
 }
 
 // firstWord returns the first whitespace-separated token of s ("" if none).
