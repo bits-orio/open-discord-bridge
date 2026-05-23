@@ -28,6 +28,11 @@ discord:
   announce_status: true     # true = post "established"/"disconnected" when the bridge's
                             # link to Factorio (RCON + mod handshake) changes. Routed like
                             # any event under "bridge.*" — needs a matching route (e.g. "*").
+  # Mark linked players in Discord. The bot needs Manage Roles (and a role ABOVE the
+  # target role) for linked_role_id; Manage Nicknames for linked_nickname (can't rename
+  # the server owner). Both optional.
+  # linked_role_id: "112233445566778899"      # assign this role to linked users
+  # linked_nickname: "{discord} | {factorio}"  # {factorio}=in-game name, {discord}=their name
   # First matching route wins. Patterns: exact ("vanilla.chat"),
   # namespace glob ("mts.*"), or catch-all ("*").
   # Every channel listed here also accepts Discord messages back into the game.

@@ -73,6 +73,8 @@ type DiscordConfig struct {
 	GuildID        string      `yaml:"guild_id"`
 	Embed          bool        `yaml:"embed"`           // render outbound events as colored embeds
 	AnnounceStatus bool        `yaml:"announce_status"` // post bridge.established/disconnected to Discord
+	LinkedRoleID   string      `yaml:"linked_role_id"`  // role kept in sync with linked players
+	LinkedNickname string      `yaml:"linked_nickname"` // nickname format for linked members ({factorio}/{discord})
 	Routes         []Route     `yaml:"routes"`
 	Admins         AdminConfig `yaml:"admins"`
 	Commands       []Command   `yaml:"commands"`
@@ -233,6 +235,8 @@ func LoadFromEnv() (*Config, error) {
 			GuildID:        os.Getenv("ODB_DISCORD_GUILD_ID"),
 			Embed:          parseBool(os.Getenv("ODB_EMBED")),
 			AnnounceStatus: parseBool(os.Getenv("ODB_ANNOUNCE_STATUS")),
+			LinkedRoleID:   os.Getenv("ODB_LINKED_ROLE_ID"),
+			LinkedNickname: os.Getenv("ODB_LINKED_NICKNAME"),
 			Admins: AdminConfig{
 				Roles:                splitCSV(os.Getenv("ODB_ADMIN_ROLES")),
 				Users:                splitCSV(os.Getenv("ODB_ADMIN_USERS")),

@@ -53,6 +53,10 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 - [ ] **List (admin):** `!links` → lists `player -> discord (id)` for all links
 - [ ] **Admin unlink:** `!unlink-player <name>` removes one; `!unlink-all` clears all
       (both reflected by `!links`)
+- [ ] **Linked role** (set `discord.linked_role_id`, bot has Manage Roles + a higher role):
+      within ~20s of linking, the user gets the role; after unlink, it's removed
+- [ ] **Linked nickname** (set `discord.linked_nickname`, bot has Manage Nicknames): the
+      user's nickname becomes the format (e.g. `name | FactorioPlayer`); cleared on unlink
 
 ## 6. Embeds (optional)
 - [ ] Set `discord.embed: true` (or `ODB_EMBED=true`), restart → events render as colored

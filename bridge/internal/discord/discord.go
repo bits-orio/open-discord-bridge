@@ -186,6 +186,22 @@ func (c *Client) Send(channelID, content string) {
 	}
 }
 
+// AddRole / RemoveRole manage a guild role on a member (used to mark linked players).
+// The bot needs Manage Roles and a role above the target role.
+func (c *Client) AddRole(guildID, userID, roleID string) error {
+	return c.session.GuildMemberRoleAdd(guildID, userID, roleID)
+}
+
+func (c *Client) RemoveRole(guildID, userID, roleID string) error {
+	return c.session.GuildMemberRoleRemove(guildID, userID, roleID)
+}
+
+// SetNickname sets a member's server nickname ("" clears it). Needs Manage Nicknames and
+// a role above the member; can't change the guild owner.
+func (c *Client) SetNickname(guildID, userID, nick string) error {
+	return c.session.GuildMemberNickname(guildID, userID, nick)
+}
+
 // SendEmbed posts an event as a colored embed (fire-and-forget).
 func (c *Client) SendEmbed(channelID, description string, color int) {
 	_, err := c.session.ChannelMessageSendEmbed(channelID, &discordgo.MessageEmbed{

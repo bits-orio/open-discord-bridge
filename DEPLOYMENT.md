@@ -58,6 +58,8 @@ env vars and no file is mounted.
 | `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
 | `ODB_EMBED` | Render events as colored embeds (except chat — see below) | `false` |
 | `ODB_ANNOUNCE_STATUS` | Post bridge↔Factorio connect/disconnect to Discord | `false` |
+| `ODB_LINKED_ROLE_ID` | Discord role assigned to linked players | — |
+| `ODB_LINKED_NICKNAME` | Nickname format for linked members (`{factorio}`/`{discord}`) | — |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
 | `ODB_ROUTES` | Explicit routes: `source=channel_id,source=channel_id` | — |
 | `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` (public, single-line only) | — |
@@ -158,6 +160,18 @@ player_name)`. (`{userid}` is the Discord user ID; `{user}` is their name.)
 - { trigger: "!unlink-all",    admin: true, rcon: "/odb-unlink-all" }
 ```
 Links persist in the mod's save `storage` across restarts (per save/world).
+
+**Showing linked status in Discord** — the bridge can reflect link state on the member:
+- `discord.linked_role_id` — assigns/removes a role on link/unlink (colored name + member
+  list grouping + optional role icon). Bot needs **Manage Roles** and a role **above** the
+  target role.
+- `discord.linked_nickname` — sets the member's nickname, e.g. `"{discord} | {factorio}"`
+  ({factorio} = in-game name, {discord} = their Discord name); cleared on unlink. Bot needs
+  **Manage Nicknames** (and can't rename the server owner).
+
+It reconciles every ~20s from the mod's link state, so it self-heals and reflects unlinks.
+Grant the extra permissions when enabling these (re-invite the bot or edit its role);
+failures are logged.
 
 **Notes:**
 - Anyone in the channel can run **public** commands — keep destructive ones `admin: true`.

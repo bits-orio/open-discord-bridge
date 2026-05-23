@@ -149,10 +149,23 @@ end)
 -- /v1/status. The bridge runs this over RCON.
 commands.add_command("odb-status", "Open Discord Bridge: report mod status as JSON (RCON)", function(cmd)
   if cmd.player_index then return end -- RCON / server only
+  local links = {}
+  if storage.odb and storage.odb.links then
+    for player_name, link in pairs(storage.odb.links) do
+      if link.discord_id then
+        links[#links + 1] = {
+          discord_id   = link.discord_id,
+          player       = player_name,
+          discord_name = link.discord_name,
+        }
+      end
+    end
+  end
   rcon.print(helpers.table_to_json({
     mod_version = script.active_mods["open-discord-bridge"],
     interface   = INTERFACE,
     sources     = (storage.odb and storage.odb.sources) or {},
+    links       = links,
   }))
 end)
 

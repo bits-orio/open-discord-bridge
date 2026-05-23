@@ -151,6 +151,11 @@ func main() {
 	defer stop()
 	go tail.Run(ctx, onLine)
 
+	// Keep a Discord role / nickname in sync with linked players.
+	if (cfg.Discord.LinkedRoleID != "" || cfg.Discord.LinkedNickname != "") && cfg.Discord.GuildID != "" {
+		go syncLinkedMembers(ctx, rc, dc, cfg.Discord.GuildID, cfg.Discord.LinkedRoleID, cfg.Discord.LinkedNickname)
+	}
+
 	// Watch the bridge↔Factorio link (RCON + mod handshake) and announce transitions.
 	if cfg.Discord.AnnounceStatus {
 		go monitorConnection(ctx, rc, func(connected bool, version string) {
@@ -246,6 +251,111 @@ func monitorConnection(ctx context.Context, rc *rcon.Client, announce func(conne
 			return
 		case <-ticker.C:
 			check()
+		}
+	}
+}
+
+// linkInfo is one player↔Discord mapping reported by /odb-status.
+type linkInfo struct {
+	DiscordID   string `json:"discord_id"`
+	Player      string `json:"player"`
+	DiscordName string `json:"discord_name"`
+}
+
+func parseLinks(statusJSON string) []linkInfo {
+	var s struct {
+		Links json.RawMessage `json:"links"`
+	}
+	if json.Unmarshal([]byte(statusJSON), &s) != nil {
+		return nil
+	}
+	var links []linkInfo
+	_ = json.Unmarshal(s.Links, &links) // [] or {} (empty) -> nil; [{...}] -> entries
+	return links
+}
+
+// queryLinks fetches the current player↔Discord links over RCON. ok=false means the mod
+// is unreachable (so callers should not churn Discord state during an outage).
+func queryLinks(rc *rcon.Client) ([]linkInfo, bool) {
+	resp, err := rc.Execute("/odb-status")
+	if err != nil {
+		return nil, false
+	}
+	return parseLinks(resp), true
+}
+
+// nickFor renders a linked member's nickname from the configured format ({factorio} =
+// in-game name, {discord} = their Discord display name), capped at Discord's 32 chars.
+func nickFor(format string, l linkInfo) string {
+	n := strings.ReplaceAll(format, "{factorio}", l.Player)
+	n = strings.ReplaceAll(n, "{discord}", l.DiscordName)
+	if len(n) > 32 {
+		n = n[:32]
+	}
+	return n
+}
+
+// syncLinkedMembers reconciles a Discord role and/or nickname with the set of linked
+// players, polling /odb-status. Tracked in memory: it applies on a link transition and
+// reverts on unlink (while running). Errors (missing Manage Roles/Nicknames, role
+// hierarchy, guild owner) are logged and retried.
+func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client, guildID, roleID, nickFormat string) {
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+
+	seen := map[string]bool{}
+	reconcile := func() {
+		links, ok := queryLinks(rc)
+		if !ok {
+			return
+		}
+		cur := make(map[string]linkInfo, len(links))
+		for _, l := range links {
+			if l.DiscordID != "" {
+				cur[l.DiscordID] = l
+			}
+		}
+		for id, l := range cur { // newly linked → apply
+			if seen[id] {
+				continue
+			}
+			if roleID != "" {
+				if err := dc.AddRole(guildID, id, roleID); err != nil {
+					log.Printf("linked-member: add role to %s failed: %v", id, err)
+					continue // retry next poll
+				}
+			}
+			if nickFormat != "" {
+				if err := dc.SetNickname(guildID, id, nickFor(nickFormat, l)); err != nil {
+					log.Printf("linked-member: set nickname for %s failed: %v", id, err)
+				}
+			}
+			seen[id] = true
+		}
+		for id := range seen { // newly unlinked → revert
+			if _, still := cur[id]; still {
+				continue
+			}
+			if roleID != "" {
+				if err := dc.RemoveRole(guildID, id, roleID); err != nil {
+					log.Printf("linked-member: remove role from %s failed: %v", id, err)
+					continue // keep, retry next poll
+				}
+			}
+			if nickFormat != "" {
+				_ = dc.SetNickname(guildID, id, "") // clear
+			}
+			delete(seen, id)
+		}
+	}
+
+	reconcile()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			reconcile()
 		}
 	}
 }
