@@ -52,6 +52,7 @@ local function handle_incoming(args)
 
   script.raise_event(on_incoming_event, {
     user       = args.user,
+    user_id    = args.user_id,
     message    = args.message,
     channel    = args.channel,
     avatar_url = args.avatar_url,
@@ -61,7 +62,25 @@ local function handle_incoming(args)
   -- (e.g. MTS routing into a specific team's chat) in addition to this.
   local user = args.user or "Discord"
   local msg  = args.message or ""
-  game.print(string.format("[color=114,137,218][Discord][/color] %s: %s", user, msg))
+
+  -- If this Discord user is linked to a player, tint their name with the player's
+  -- in-game chat color so it reads like that player speaking.
+  local name = user
+  if args.user_id and storage.odb and storage.odb.links then
+    for player_name, link in pairs(storage.odb.links) do
+      if link.discord_id == args.user_id then
+        local p = game.get_player(player_name)
+        if p and p.valid then
+          local c = p.chat_color
+          name = string.format("[color=%.3f,%.3f,%.3f]%s[/color]", c.r, c.g, c.b, user)
+        end
+        break
+      end
+    end
+  end
+
+  -- The blurple [Discord] tag keeps Discord messages visually distinct from in-game chat.
+  game.print(string.format("[color=114,137,218][Discord][/color] %s: %s", name, msg))
 end
 
 -- ─── Storage / custom event id ───────────────────────────────────────────────

@@ -144,8 +144,14 @@ func (c *Client) handleInteraction(_ *discordgo.Session, i *discordgo.Interactio
 		inv.Roles = i.Member.Roles
 		inv.IsAdmin = i.Member.Permissions&discordgo.PermissionAdministrator != 0
 		if i.Member.User != nil {
-			inv.User = i.Member.User.Username
 			inv.UserID = i.Member.User.ID
+			inv.User = i.Member.User.Username
+			if i.Member.User.GlobalName != "" {
+				inv.User = i.Member.User.GlobalName
+			}
+			if i.Member.Nick != "" {
+				inv.User = i.Member.Nick
+			}
 		}
 	}
 
@@ -247,13 +253,26 @@ func (c *Client) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate)
 		roles = m.Member.Roles
 	}
 	c.onMsg(InboundMessage{
-		User:      m.Author.Username,
+		User:      messageDisplayName(m),
 		UserID:    m.Author.ID,
 		Roles:     roles,
 		Message:   m.Content,
 		ChannelID: m.ChannelID,
 		IsAdmin:   c.authorIsAdmin(m),
 	})
+}
+
+// messageDisplayName prefers the server nickname, then the global display name, then the
+// raw username — so "bits-orio" (a display name) shows correctly even though the new-style
+// username can't contain a hyphen.
+func messageDisplayName(m *discordgo.MessageCreate) string {
+	if m.Member != nil && m.Member.Nick != "" {
+		return m.Member.Nick
+	}
+	if m.Author.GlobalName != "" {
+		return m.Author.GlobalName
+	}
+	return m.Author.Username
 }
 
 // authorIsAdmin reports whether the message author has Discord's Administrator

@@ -64,6 +64,7 @@ func main() {
 		}
 		payload, _ := json.Marshal(map[string]string{
 			"user":    msg.User,
+			"user_id": msg.UserID,
 			"message": msg.Message,
 			"channel": msg.ChannelID,
 		})

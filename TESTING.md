@@ -12,9 +12,14 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 
 ## 1. Core relay (needs a connected Factorio client)
 - [ ] In-game chat → appears in the Discord channel
-- [ ] Discord message → appears in-game as `[Discord] you: …`
+- [ ] Discord message → appears in-game as `[Discord] <name>: …` with a blurple `[Discord]`
+      tag so it's distinct from in-game chat
+- [ ] The `<name>` is your Discord **display name** (e.g. `bits-orio`), not the raw
+      username (new usernames can't contain hyphens)
+- [ ] If your Discord account is **linked** (see §5), your name in-game is tinted with your
+      in-game chat color
 - [ ] No echo loop (a Discord message produces exactly one in-game line, no Discord echo)
-- [ ] Special chars / emoji / multi-line Discord message arrive intact in-game
+- [ ] Discord emoji do **not** render in-game (expected — not translated to rich text yet)
 
 ## 2. Events (game → Discord)
 - [ ] Join / leave (reconnect a client)
@@ -77,3 +82,11 @@ curl -s -H "Authorization: Bearer $BRIDGE_CONTROL_TOKEN" :7777/v1/status | pytho
 > Notes: the wizard's token/password prompts echo (no hidden input). `/c` console
 > commands need you to be a server admin. SSH streaming transport is deferred to a later
 > phase.
+
+## Known limitations / future
+- **Emoji & Discord markdown** are passed through as text, not translated to Factorio
+  [rich text](https://wiki.factorio.com/rich_text). Full translation (and using rich text
+  to make Discord messages more distinctive) is a planned future feature.
+- **Inbound message rich text isn't sanitized** — a Discord user typing `[color=…]` etc.
+  is currently rendered as-is in-game. (Linked-name coloring wraps only the name to avoid
+  breakage.) Sanitization/translation will come with the rich-text work.
