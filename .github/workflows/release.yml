@@ -1,0 +1,69 @@
+name: release
+
+# Tag a release to publish: `git tag v0.1.0 && git push origin v0.1.0`.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release + upload assets
+  packages: write # push images to GHCR
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Bridge image
+        uses: docker/build-push-action@v6
+        with:
+          context: bridge
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/open-discord-bridge:latest
+            ghcr.io/${{ github.repository_owner }}/open-discord-bridge:${{ github.ref_name }}
+
+      - name: Sidecar image (Factorio + bridge)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/Dockerfile.sidecar
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/open-discord-bridge-sidecar:latest
+            ghcr.io/${{ github.repository_owner }}/open-discord-bridge-sidecar:${{ github.ref_name }}
+
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: bridge/go.mod
+
+      - name: Build cross-platform binaries
+        working-directory: bridge
+        run: |
+          mkdir -p dist
+          for target in linux/amd64 linux/arm64 windows/amd64 darwin/arm64; do
+            os=${target%/*}; arch=${target#*/}
+            ext=""; [ "$os" = windows ] && ext=".exe"
+            echo "building $os/$arch"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags "-s -w" \
+              -o "dist/odb-bridge-$os-$arch$ext" ./cmd/bridge
+          done
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            bridge/dist/*
+            deploy/pterodactyl-egg.json
+          generate_release_notes: true

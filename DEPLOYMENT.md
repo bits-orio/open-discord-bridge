@@ -248,3 +248,23 @@ Reference artifacts:
 - Control API requires a bearer token; bind it to loopback (or a private network) and
   front it with TLS if exposed.
 - Keep RCON off the public internet (loopback, private network, or tunnel).
+
+## 7. Releasing (maintainers)
+
+CI/CD lives in `.github/workflows/` (runs once the repo is on GitHub):
+- **`ci.yml`** — `go vet` + `go test` + `go build` on every push/PR.
+- **`release.yml`** — on a `v*` tag: builds and pushes the bridge and sidecar images to
+  GHCR, and publishes cross-platform binaries (+ the egg) to a GitHub Release.
+
+Cut a release:
+```sh
+git tag v0.1.0 && git push origin v0.1.0
+```
+Publishes:
+- `ghcr.io/<owner>/open-discord-bridge:{latest,v0.1.0}` — bridge
+- `ghcr.io/<owner>/open-discord-bridge-sidecar:{latest,v0.1.0}` — Factorio + bridge
+- binaries `odb-bridge-<os>-<arch>` (linux/amd64, linux/arm64, windows/amd64, darwin/arm64)
+
+After the first publish, **make the GHCR package public** (GitHub → Packages → settings) so
+hosts/panels can pull without auth. Ensure `deploy/pterodactyl-egg.json`'s `docker_images`
+matches your published path (`<owner>` = your GitHub org/user).
