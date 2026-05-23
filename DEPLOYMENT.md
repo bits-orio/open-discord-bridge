@@ -126,8 +126,8 @@ Target deployments, in priority order (RCON is used in all of them):
 | # | What launches | Where | Transport(s) | Status |
 |---|---|---|---|---|
 | 1 | Factorio + bridge together | bare metal | Local (file) | `start-all.sh` ✅ |
-| 2 | Bridge only | bare metal | Local (file) or SFTP | run the binary ✅ (helper script planned) |
-| 3 | Factorio + bridge together | single container (sidecar) | Local (file) | entrypoint planned |
+| 2 | Bridge only | bare metal | Local (file) or SFTP | `start-bridge.sh` ✅ |
+| 3 | Factorio + bridge together | single container (sidecar) | Local (file) | `run-sidecar.sh` ✅ |
 | 4 | Bridge only | single container | SFTP | `docker run` (env mode) ✅ |
 | 5 | Factorio + bridge | separate containers (compose) | shared volume (Local) or SFTP | `docker-compose.yml` ✅ |
 
@@ -142,6 +142,15 @@ Bridge and Factorio on the same machine; Local transport over loopback RCON.
 ./start-all.sh        # launches Factorio + the bridge
 ```
 Or run the bridge by hand: `./bridge/odb-bridge -config bridge/bridge.yaml`.
+
+**Bridge only** (Factorio runs elsewhere — same box with a shared file, or remote via
+SFTP, set in `bridge.yaml`): `./start-bridge.sh`.
+
+**Launch both as a sidecar** (bridge in background, Factorio in foreground, bridge stops
+when Factorio exits) — also the building block for the single-container path:
+```sh
+./run-sidecar.sh <your factorio launch command...>
+```
 
 ### B. Docker — standalone container (no compose)
 Env-var mode, no file mounted. Mount or share the path holding `events.jsonl`.
@@ -179,19 +188,22 @@ The bridge is containerized; Factorio runs on another host/container.
 - Events: either bind-mount Factorio's data dir read-only (shared-mount → Local), or set
   `ODB_TRANSPORT=sftp` with `ODB_SFTP_HOST`/`ODB_SFTP_USER`/`ODB_SFTP_KEY_PATH`.
 
-### E. Panels — Pterodactyl / Wings (individual containers)
-Each process is its own panel-managed container; the panel controls lifecycle. This is
-**AleForge's model** — no compose.
+### E. Panels — Pterodactyl / Wings (sidecar)
+The panel controls lifecycle. This is **AleForge's model** — no compose. A shared volume
+between two containers isn't available there, so the chosen shape is a **sidecar**: the
+bridge runs alongside Factorio in the **same** container, launched by a custom startup.
 
+- Startup launches both via `run-sidecar.sh <factorio command>` (bridge background,
+  Factorio foreground). Local transport — events file is local, RCON is loopback.
 - Configure via egg **variables → env vars** (env-var mode; no mounted file needed).
-- RCON over the container network (`ODB_RCON_ADDRESS` = the Factorio allocation).
-- Events access: shared mount or SFTP (decision pending AleForge infra; see below).
-- The container is panel-friendly: logs to stdout, stops on `SIGTERM`, and
-  `POST /v1/restart` exits cleanly so the panel restarts it.
+- Panel-friendly: logs to stdout, stops on `SIGTERM`, and `POST /v1/restart` exits cleanly
+  so the panel restarts it.
+- The bridge binary must be present in the container (bake it into the image, or download
+  it at startup).
 
-> **Both event-access paths now work:** a Wings shared mount (Local transport) **or**
-> SFTP (`ODB_TRANSPORT=sftp`, pointing at Pterodactyl's per-server SFTP). The open item is
-> only which one AleForge prefers operationally. A Pterodactyl egg is a planned deliverable.
+> SFTP from a separate container is a viable fallback (set `ODB_TRANSPORT=sftp`), but
+> AleForge prefers sidecar for a self-contained, low-maintenance egg. A Pterodactyl egg is
+> a planned deliverable.
 
 ---
 
