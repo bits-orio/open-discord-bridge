@@ -41,7 +41,9 @@ env vars and no file is mounted.
 | `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
 | `ODB_ROUTES` | Explicit routes: `source=channel_id,source=channel_id` | — |
-| `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` | — |
+| `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` (public, single-line only) | — |
+| `ODB_ADMIN_ROLES` | Comma-separated admin role IDs | — |
+| `ODB_ADMIN_USERS` | Comma-separated admin user IDs | — |
 | `ODB_CONTROL_API_ENABLED` | Enable the Control API | `false` |
 | `ODB_CONTROL_API_LISTEN` | Control API bind address | `127.0.0.1:7777` |
 | `BRIDGE_CONTROL_TOKEN` | Control API bearer token (**secret**, required if enabled) | — |
@@ -58,20 +60,47 @@ Provide routes via **either** `ODB_DISCORD_CHANNEL_ID` (simple, one channel) **o
 
 ## 2. Discord → RCON commands
 
-Inbound Discord messages are normally relayed into game chat. But a message whose **first
-word** matches a configured command runs an **RCON command** instead and posts the reply.
-Admins choose exactly which commands exist:
+A message whose **first word** matches a configured command runs an **RCON command** and
+posts the reply (other messages relay into game chat as normal). You choose exactly which
+commands exist, and which require admin.
 
 ```yaml
 discord:
+  admins:
+    roles: ["112233445566778899"]   # role IDs that count as admin
+    users: ["998877665544332211"]   # user IDs
+    # use_discord_permission: true   # default: Discord "Administrator" perm also = admin
   commands:
     - trigger: "!players"
-      rcon: "/players online"
-```
-Env mode: `ODB_COMMANDS="!players=/players online;!evo=/evolution"`.
+      rcon: "/players online"        # public
 
-Anyone who can post in a bridged channel can trigger these, so only expose safe commands.
-(Per-role restriction is a planned enhancement.)
+    - trigger: "!ban"
+      admin: true                    # admins only
+      rcon: "/ban someone"
+
+    - trigger: "!cleanup"            # multiline / script (sent as one RCON call)
+      admin: true
+      rcon: |
+        /silent-command
+        local n = 0
+        for _, e in pairs(game.surfaces[1].find_entities_filtered{name="item-on-ground"}) do
+          e.destroy(); n = n + 1
+        end
+        rcon.print("removed " .. n)
+```
+
+**Who is admin** (checked in order): the author's user ID is in `admins.users`; or they
+hold a role in `admins.roles`; or — unless `use_discord_permission: false` — they have
+Discord's **Administrator** permission. So in the common case (Discord admins = your
+server admins) you configure nothing; the lists are for when those sets differ.
+
+**Notes:**
+- Anyone in the channel can run **public** commands — keep destructive ones `admin: true`.
+- `rcon` may be **multiline** (a `/silent-command` script); it's sent as a single RCON call.
+- Admin-gating and multiline need the **YAML file**; env mode (`ODB_COMMANDS`) is the
+  simple subset (public, single-line). `ODB_ADMIN_ROLES`/`ODB_ADMIN_USERS` set admins in env.
+- Argument interpolation (passing the rest of the Discord message into the command) is not
+  done yet — commands run their fixed `rcon` text. Planned.
 
 ## 3. Transports: how the bridge reads game events
 

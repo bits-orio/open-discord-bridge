@@ -31,14 +31,34 @@ discord:
       channel_id: "111111111111111111"
     - source: "*"
       channel_id: "111111111111111111"
+  # Who counts as a Discord admin (for admin-only commands). A user is admin if their ID
+  # is in `users`, OR they hold a role in `roles`, OR (default) they have Discord's
+  # Administrator permission. Set use_discord_permission: false to require the lists.
+  admins:
+    roles: []   # role IDs, e.g. ["112233445566778899"]
+    users: []   # user IDs
+    # use_discord_permission: true
+
   # Discord -> RCON commands. A message whose first word matches `trigger` runs `rcon`
-  # and posts the reply. You choose exactly which commands exist — only expose safe ones,
-  # since anyone in the channel can trigger them.
+  # and posts the reply. Public by default; set `admin: true` to restrict to admins.
+  # `rcon` may be multiline (a /silent-command script).
   commands:
     - trigger: "!players"
       rcon: "/players online"
-    # - trigger: "!evolution"
-    #   rcon: "/evolution"
+
+    - trigger: "!kick"           # admin-only example
+      admin: true
+      rcon: "/kick {player}"     # note: args are not interpolated yet; see docs
+
+    - trigger: "!cleanup"        # multiline script example
+      admin: true
+      rcon: |
+        /silent-command
+        local n = 0
+        for _, e in pairs(game.surfaces[1].find_entities_filtered{name="item-on-ground"}) do
+          e.destroy(); n = n + 1
+        end
+        rcon.print("removed " .. n .. " ground items")
 
 # Open HTTP Control API (off by default). Any portal/CLI integrates against the same
 # spec — see pkg/controlapi/spec/openapi.yaml. Bind to loopback unless you front it

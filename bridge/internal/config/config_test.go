@@ -67,6 +67,30 @@ func TestLoadFromEnvCommands(t *testing.T) {
 	}
 }
 
+func TestLoadFromEnvAdmins(t *testing.T) {
+	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
+	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
+	t.Setenv("ODB_ADMIN_ROLES", "r1, r2")
+	t.Setenv("ODB_ADMIN_USERS", "u1")
+
+	c, err := Load("/no/such/bridge.yaml")
+	if err != nil {
+		t.Fatalf("env load: %v", err)
+	}
+	if len(c.Discord.Admins.Roles) != 2 || c.Discord.Admins.Roles[1] != "r2" {
+		t.Fatalf("admin roles: %+v", c.Discord.Admins.Roles)
+	}
+	if len(c.Discord.Admins.Users) != 1 || c.Discord.Admins.Users[0] != "u1" {
+		t.Fatalf("admin users: %+v", c.Discord.Admins.Users)
+	}
+	if !c.Discord.Admins.PermissionFallback() {
+		t.Fatal("permission fallback should default to true")
+	}
+}
+
 func TestLoadFromEnvMissingTokenFails(t *testing.T) {
 	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
 	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")

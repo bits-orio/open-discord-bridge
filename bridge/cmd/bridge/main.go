@@ -44,28 +44,32 @@ func main() {
 	defer rc.Close()
 
 	// Admin-configured Discord commands: first word of a message maps to an RCON command.
-	cmdMap := make(map[string]string, len(cfg.Discord.Commands))
+	cmdMap := make(map[string]config.Command, len(cfg.Discord.Commands))
 	for _, c := range cfg.Discord.Commands {
-		cmdMap[c.Trigger] = c.Rcon
+		cmdMap[c.Trigger] = c
 	}
 
 	// Discord → game.
-	onInbound := func(user, message, channelID string) {
-		if rconCmd, ok := cmdMap[firstWord(message)]; ok {
-			resp, err := rc.Execute(rconCmd)
+	onInbound := func(msg discord.InboundMessage) {
+		if cmd, ok := cmdMap[firstWord(msg.Message)]; ok {
+			if cmd.Admin && !resolveAdmin(cfg.Discord.Admins, msg) {
+				dc.Send(msg.ChannelID, fmt.Sprintf(":no_entry: `%s` is admin-only.", cmd.Trigger))
+				return
+			}
+			resp, err := rc.Execute(cmd.Rcon)
 			if err != nil {
-				log.Printf("rcon: command %q failed: %v", rconCmd, err)
+				log.Printf("rcon: command %q failed: %v", cmd.Trigger, err)
 				return
 			}
 			if strings.TrimSpace(resp) != "" {
-				dc.Send(channelID, "```\n"+resp+"\n```")
+				dc.Send(msg.ChannelID, "```\n"+resp+"\n```")
 			}
 			return
 		}
 		payload, _ := json.Marshal(map[string]string{
-			"user":    user,
-			"message": message,
-			"channel": channelID,
+			"user":    msg.User,
+			"message": msg.Message,
+			"channel": msg.ChannelID,
 		})
 		if _, err := rc.Execute("/odb-incoming " + string(payload)); err != nil {
 			log.Printf("rcon: inbound deliver failed: %v", err)
@@ -384,6 +388,28 @@ func kvSummary(data map[string]any) string {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, str(data[k])))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// resolveAdmin reports whether the message author is a Discord admin: an explicit user
+// ID, a holder of a configured admin role, or (fallback) Discord's Administrator perm.
+func resolveAdmin(a config.AdminConfig, msg discord.InboundMessage) bool {
+	for _, u := range a.Users {
+		if u == msg.UserID {
+			return true
+		}
+	}
+	if len(a.Roles) > 0 {
+		held := make(map[string]bool, len(msg.Roles))
+		for _, r := range msg.Roles {
+			held[r] = true
+		}
+		for _, r := range a.Roles {
+			if held[r] {
+				return true
+			}
+		}
+	}
+	return a.PermissionFallback() && msg.IsAdmin
 }
 
 // firstWord returns the first whitespace-separated token of s ("" if none).

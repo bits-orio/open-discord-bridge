@@ -68,11 +68,12 @@ type RCONConfig struct {
 }
 
 type DiscordConfig struct {
-	TokenEnv string    `yaml:"token_env"`
-	Token    string    `yaml:"-"` // resolved from env at load time
-	GuildID  string    `yaml:"guild_id"`
-	Routes   []Route   `yaml:"routes"`
-	Commands []Command `yaml:"commands"`
+	TokenEnv string      `yaml:"token_env"`
+	Token    string      `yaml:"-"` // resolved from env at load time
+	GuildID  string      `yaml:"guild_id"`
+	Routes   []Route     `yaml:"routes"`
+	Admins   AdminConfig `yaml:"admins"`
+	Commands []Command   `yaml:"commands"`
 }
 
 type Route struct {
@@ -80,11 +81,28 @@ type Route struct {
 	ChannelID string `yaml:"channel_id"`
 }
 
+// AdminConfig defines who counts as a Discord admin (for admin-only commands). A user is
+// an admin if their ID is in Users, OR they hold any role in Roles, OR (when
+// UseDiscordPermission is unset/true) they have Discord's Administrator permission.
+type AdminConfig struct {
+	Roles                []string `yaml:"roles"` // role IDs
+	Users                []string `yaml:"users"` // user IDs
+	UseDiscordPermission *bool    `yaml:"use_discord_permission"`
+}
+
+// PermissionFallback reports whether Discord's Administrator permission counts as admin
+// (default true when unset).
+func (a AdminConfig) PermissionFallback() bool {
+	return a.UseDiscordPermission == nil || *a.UseDiscordPermission
+}
+
 // Command maps a Discord message trigger (matched on the first word) to an RCON command
 // the bridge runs, posting the reply back. Admins choose exactly which commands exist.
+// Rcon may be multiline (e.g. a /silent-command script). Admin gates it to Discord admins.
 type Command struct {
 	Trigger string `yaml:"trigger"`
 	Rcon    string `yaml:"rcon"`
+	Admin   bool   `yaml:"admin"`
 }
 
 // Load reads and validates configuration. If the config file is absent, it builds the
@@ -210,6 +228,11 @@ func LoadFromEnv() (*Config, error) {
 			TokenEnv: "DISCORD_BOT_TOKEN",
 			Token:    os.Getenv("DISCORD_BOT_TOKEN"),
 			GuildID:  os.Getenv("ODB_DISCORD_GUILD_ID"),
+			Admins: AdminConfig{
+				Roles:                splitCSV(os.Getenv("ODB_ADMIN_ROLES")),
+				Users:                splitCSV(os.Getenv("ODB_ADMIN_USERS")),
+				UseDiscordPermission: optBool(os.Getenv("ODB_ADMIN_USE_DISCORD_PERMISSION")),
+			},
 		},
 		ControlAPI: ControlAPIConfig{
 			Enabled:      parseBool(os.Getenv("ODB_CONTROL_API_ENABLED")),
@@ -294,6 +317,32 @@ func commandsFromEnv() ([]Command, error) {
 		cmds = append(cmds, Command{Trigger: strings.TrimSpace(trig), Rcon: strings.TrimSpace(rc)})
 	}
 	return cmds, nil
+}
+
+// splitCSV splits a comma-separated env value into trimmed, non-empty items.
+func splitCSV(s string) []string {
+	if s == "" {
+		return nil
+	}
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// optBool parses an optional bool env value into *bool (nil if unset/invalid).
+func optBool(s string) *bool {
+	if s == "" {
+		return nil
+	}
+	b, err := strconv.ParseBool(s)
+	if err != nil {
+		return nil
+	}
+	return &b
 }
 
 func getenvDefault(key, def string) string {

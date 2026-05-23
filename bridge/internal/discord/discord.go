@@ -7,8 +7,19 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
+// InboundMessage is a human message in a bridged channel, with the author identity and
+// role/permission context needed to authorize admin-only commands.
+type InboundMessage struct {
+	User      string   // display name
+	UserID    string   // Discord user ID
+	Roles     []string // role IDs the author holds
+	Message   string
+	ChannelID string
+	IsAdmin   bool // author has Discord's Administrator permission
+}
+
 // InboundFunc is called when a human posts in one of the bridged channels.
-type InboundFunc func(user, message, channelID string)
+type InboundFunc func(InboundMessage)
 
 type Client struct {
 	session   *discordgo.Session
@@ -24,7 +35,8 @@ func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, er
 	if err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
-	s.Identify.Intents = discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
+	// Guilds intent populates guild/role/channel state (needed to compute admin perms).
+	s.Identify.Intents = discordgo.IntentGuilds | discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
 
 	c := &Client{session: s, onMsg: onMsg, inbound: map[string]bool{}}
 	c.UpdateInbound(inboundChannels)
@@ -123,5 +135,48 @@ func (c *Client) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate)
 	if m.Content == "" {
 		return
 	}
-	c.onMsg(m.Author.Username, m.Content, m.ChannelID)
+	var roles []string
+	if m.Member != nil {
+		roles = m.Member.Roles
+	}
+	c.onMsg(InboundMessage{
+		User:      m.Author.Username,
+		UserID:    m.Author.ID,
+		Roles:     roles,
+		Message:   m.Content,
+		ChannelID: m.ChannelID,
+		IsAdmin:   c.authorIsAdmin(m),
+	})
+}
+
+// authorIsAdmin reports whether the message author has Discord's Administrator
+// permission, computed from cached guild/role state + the roles in the message event
+// (no privileged GuildMembers intent needed). Guild owner is always admin.
+func (c *Client) authorIsAdmin(m *discordgo.MessageCreate) bool {
+	if m.GuildID == "" {
+		return false
+	}
+	g, err := c.session.State.Guild(m.GuildID)
+	if err != nil {
+		return false
+	}
+	if g.OwnerID == m.Author.ID {
+		return true
+	}
+	roleIDs := append([]string{m.GuildID}, rolesOf(m)...) // include @everyone (== guildID)
+	for _, id := range roleIDs {
+		if role, err := c.session.State.Role(m.GuildID, id); err == nil {
+			if role.Permissions&discordgo.PermissionAdministrator != 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func rolesOf(m *discordgo.MessageCreate) []string {
+	if m.Member == nil {
+		return nil
+	}
+	return m.Member.Roles
 }
