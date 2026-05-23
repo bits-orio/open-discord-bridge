@@ -54,26 +54,9 @@ func main() {
 	// Discord → game.
 	onInbound := func(msg discord.InboundMessage) {
 		if cmd, ok := cmdMap[firstWord(msg.Message)]; ok {
-			if cmd.Admin && !resolveAdmin(cfg.Discord.Admins, msg) {
-				dc.Send(msg.ChannelID, fmt.Sprintf(":no_entry: `%s` is admin-only.", cmd.Trigger))
-				return
-			}
-			rconCmd := cmd.Rcon
-			if cmd.Args {
-				argv := commandArgs(msg.Message)
-				if len(argv) == 0 {
-					dc.Send(msg.ChannelID, fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger))
-					return
-				}
-				rconCmd = interpolate(cmd.Rcon, argv, msg.User)
-			}
-			resp, err := rc.Execute(rconCmd)
-			if err != nil {
-				log.Printf("rcon: command %q failed: %v", cmd.Trigger, err)
-				return
-			}
-			if strings.TrimSpace(resp) != "" {
-				dc.Send(msg.ChannelID, "```\n"+resp+"\n```")
+			isAdmin := resolveAdmin(cfg.Discord.Admins, msg)
+			if reply := runCommand(rc, cmd, isAdmin, commandArgs(msg.Message), msg.User); reply != "" {
+				dc.Send(msg.ChannelID, reply)
 			}
 			return
 		}
@@ -91,6 +74,21 @@ func main() {
 	if err != nil {
 		log.Fatalf("discord: %v", err)
 	}
+
+	// Expose the configured commands as guild slash commands too (if a guild is set).
+	if specs, byName := buildSlash(cfg.Discord.Commands); len(specs) > 0 && cfg.Discord.GuildID != "" {
+		dc.EnableSlashCommands(cfg.Discord.GuildID, specs, func(inv discord.SlashInvocation) string {
+			cmd, ok := byName[inv.Name]
+			if !ok {
+				return "Unknown command."
+			}
+			isAdmin := resolveAdmin(cfg.Discord.Admins, discord.InboundMessage{
+				UserID: inv.UserID, Roles: inv.Roles, IsAdmin: inv.IsAdmin,
+			})
+			return runCommand(rc, cmd, isAdmin, strings.Fields(inv.Args), inv.User)
+		})
+	}
+
 	if err := dc.Open(); err != nil {
 		log.Fatalf("discord: open gateway: %v", err)
 	}
@@ -403,6 +401,67 @@ func kvSummary(data map[string]any) string {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, str(data[k])))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// runCommand executes a configured command (shared by the text and slash paths) and
+// returns the reply text to post ("" = nothing to post). Enforces admin gating and, for
+// args:true commands, interpolation + a usage hint.
+func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string, user string) string {
+	if cmd.Admin && !isAdmin {
+		return fmt.Sprintf(":no_entry: `%s` is admin-only.", cmd.Trigger)
+	}
+	rconCmd := cmd.Rcon
+	if cmd.Args {
+		if len(argv) == 0 {
+			return fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger)
+		}
+		rconCmd = interpolate(cmd.Rcon, argv, user)
+	}
+	resp, err := rc.Execute(rconCmd)
+	if err != nil {
+		log.Printf("rcon: command %q failed: %v", cmd.Trigger, err)
+		return ""
+	}
+	if strings.TrimSpace(resp) != "" {
+		return "```\n" + resp + "\n```"
+	}
+	return ""
+}
+
+// buildSlash maps configured commands to slash-command specs (deduped by sanitized name)
+// and a name→command lookup for the handler.
+func buildSlash(commands []config.Command) ([]discord.SlashSpec, map[string]config.Command) {
+	var specs []discord.SlashSpec
+	byName := map[string]config.Command{}
+	for _, c := range commands {
+		name := slashName(c.Trigger)
+		if name == "" {
+			continue
+		}
+		if _, dup := byName[name]; dup {
+			continue
+		}
+		byName[name] = c
+		specs = append(specs, discord.SlashSpec{
+			Name: name, Description: "Run " + c.Trigger, Admin: c.Admin, TakesArgs: c.Args,
+		})
+	}
+	return specs, byName
+}
+
+// slashName turns a trigger like "!players" into a valid slash name "players".
+func slashName(trigger string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(trigger) {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '_' || r == '-' {
+			b.WriteRune(r)
+		}
+	}
+	name := b.String()
+	if len(name) > 32 {
+		name = name[:32]
+	}
+	return name
 }
 
 // resolveAdmin reports whether the message author is a Discord admin: an explicit user

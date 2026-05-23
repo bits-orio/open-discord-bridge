@@ -39,7 +39,7 @@ func Connect(token string) (*Bot, error) {
 func (b *Bot) InviteURL() string {
 	v := url.Values{}
 	v.Set("client_id", b.ID)
-	v.Set("scope", "bot")
+	v.Set("scope", "bot applications.commands") // applications.commands enables slash commands
 	v.Set("permissions", InvitePermissions)
 	return "https://discord.com/oauth2/authorize?" + v.Encode()
 }

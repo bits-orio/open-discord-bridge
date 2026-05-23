@@ -28,7 +28,33 @@ type Client struct {
 
 	mu      sync.RWMutex
 	inbound map[string]bool
+
+	guildID    string
+	slashSpecs []SlashSpec
+	onSlash    SlashFunc
 }
+
+// SlashSpec describes a slash command to register. Admin gates it via Discord's own
+// default_member_permissions; TakesArgs adds a required "args" string option.
+type SlashSpec struct {
+	Name        string
+	Description string
+	Admin       bool
+	TakesArgs   bool
+}
+
+// SlashInvocation is a slash command invocation handed to the SlashFunc.
+type SlashInvocation struct {
+	Name    string
+	Args    string
+	User    string
+	UserID  string
+	Roles   []string
+	IsAdmin bool
+}
+
+// SlashFunc handles a slash command and returns the reply text ("" → a generic "Done.").
+type SlashFunc func(SlashInvocation) string
 
 func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, error) {
 	s, err := discordgo.New("Bot " + token)
@@ -55,12 +81,82 @@ func (c *Client) UpdateInbound(channels []string) {
 	c.mu.Unlock()
 }
 
+// EnableSlashCommands registers the interaction handler now; the commands themselves are
+// registered with Discord after Open (when the application ID is known). Call before Open.
+func (c *Client) EnableSlashCommands(guildID string, specs []SlashSpec, onSlash SlashFunc) {
+	c.guildID = guildID
+	c.slashSpecs = specs
+	c.onSlash = onSlash
+	c.session.AddHandler(c.handleInteraction)
+}
+
 func (c *Client) Open() error {
 	if err := c.session.Open(); err != nil {
 		return err
 	}
 	c.connected = true
+	if len(c.slashSpecs) > 0 && c.guildID != "" {
+		if err := c.registerSlash(); err != nil {
+			fmt.Printf("discord: slash command registration failed: %v\n", err)
+		}
+	}
 	return nil
+}
+
+func (c *Client) registerSlash() error {
+	appID := c.session.State.User.ID
+	cmds := make([]*discordgo.ApplicationCommand, 0, len(c.slashSpecs))
+	for _, sp := range c.slashSpecs {
+		ac := &discordgo.ApplicationCommand{Name: sp.Name, Description: sp.Description}
+		if sp.Admin {
+			perm := int64(discordgo.PermissionAdministrator)
+			ac.DefaultMemberPermissions = &perm
+		}
+		if sp.TakesArgs {
+			ac.Options = []*discordgo.ApplicationCommandOption{{
+				Type:        discordgo.ApplicationCommandOptionString,
+				Name:        "args",
+				Description: "arguments",
+				Required:    true,
+			}}
+		}
+		cmds = append(cmds, ac)
+	}
+	_, err := c.session.ApplicationCommandBulkOverwrite(appID, c.guildID, cmds)
+	return err
+}
+
+func (c *Client) handleInteraction(_ *discordgo.Session, i *discordgo.InteractionCreate) {
+	if i.Type != discordgo.InteractionApplicationCommand || c.onSlash == nil {
+		return
+	}
+	data := i.ApplicationCommandData()
+
+	var args string
+	for _, opt := range data.Options {
+		if opt.Name == "args" {
+			args = opt.StringValue()
+		}
+	}
+
+	inv := SlashInvocation{Name: data.Name, Args: args}
+	if i.Member != nil {
+		inv.Roles = i.Member.Roles
+		inv.IsAdmin = i.Member.Permissions&discordgo.PermissionAdministrator != 0
+		if i.Member.User != nil {
+			inv.User = i.Member.User.Username
+			inv.UserID = i.Member.User.ID
+		}
+	}
+
+	reply := c.onSlash(inv)
+	if reply == "" {
+		reply = "Done."
+	}
+	_ = c.session.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
+		Type: discordgo.InteractionResponseChannelMessageWithSource,
+		Data: &discordgo.InteractionResponseData{Content: reply},
+	})
 }
 
 func (c *Client) Close() error {

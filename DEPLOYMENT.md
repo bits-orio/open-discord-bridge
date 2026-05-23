@@ -125,6 +125,11 @@ hold a role in `admins.roles`; or — unless `use_discord_permission: false` —
 Discord's **Administrator** permission. So in the common case (Discord admins = your
 server admins) you configure nothing; the lists are for when those sets differ.
 
+**Slash commands:** when `discord.guild_id` is set, the configured commands are also
+registered as native slash commands (e.g. `/players`, `/ban`) — `admin: true` ones are
+gated by Discord's own permissions, and `args: true` ones get an `args` option. The bot
+needs the `applications.commands` scope (the wizard's invite URL includes it).
+
 **Notes:**
 - Anyone in the channel can run **public** commands — keep destructive ones `admin: true`.
 - `rcon` may be **multiline** (a `/silent-command` script); it's sent as a single RCON call.

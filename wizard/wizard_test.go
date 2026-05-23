@@ -36,6 +36,7 @@ func TestInviteURL(t *testing.T) {
 		"https://discord.com/oauth2/authorize?",
 		"client_id=12345",
 		"scope=bot",
+		"applications.commands",
 		"permissions=" + InvitePermissions,
 	} {
 		if !strings.Contains(got, want) {
