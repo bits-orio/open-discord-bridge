@@ -119,25 +119,32 @@ func main() {
 		}
 	}
 
-	// Startup permission preflight: warn (logs + Discord) about anything the bot is
-	// missing for the configured features.
+	// Startup permission preflight: warn (logs + Discord, with fix steps) about anything
+	// the bot is missing for the configured features.
 	go func() {
-		warns := dc.CheckPermissions(discord.PermissionCheck{
+		rep := dc.CheckPermissions(discord.PermissionCheck{
 			GuildID:     cfg.Discord.GuildID,
 			NeedEmbed:   cfg.Discord.Embed,
 			NeedRoles:   cfg.Discord.LinkedRoleID != "",
 			NeedNicks:   cfg.Discord.LinkedNickname != "",
 			RoleAboveID: cfg.Discord.LinkedRoleID,
 		})
-		if len(warns) == 0 {
+		if rep.Err != "" {
+			log.Printf("bridge: could not check permissions: %s", rep.Err)
 			return
 		}
-		for _, w := range warns {
-			log.Printf("bridge: permission warning: %s", w)
+		if rep.OK() {
+			return
+		}
+		if len(rep.Missing) > 0 {
+			log.Printf("bridge: bot is missing permissions: %s", strings.Join(rep.Missing, ", "))
+		}
+		if rep.Hierarchy {
+			log.Printf("bridge: bot's role is not above the linked role")
 		}
 		// Plain text (not an embed) so it posts even if Embed Links is the missing perm.
 		if ch, ok := rt.Channel("bridge.warning"); ok {
-			dc.Send(ch, ":warning: **Bridge permission issues** — "+strings.Join(warns, "; ")+". (see logs)")
+			dc.Send(ch, permissionHelp(rep))
 		}
 	}()
 
@@ -678,6 +685,38 @@ func resolveAdmin(a config.AdminConfig, msg discord.InboundMessage) bool {
 		}
 	}
 	return a.PermissionFallback() && msg.IsAdmin
+}
+
+// permissionHelp builds a Discord message describing the permission problems and
+// numbered, step-by-step instructions to fix them.
+func permissionHelp(rep discord.PermissionReport) string {
+	var b strings.Builder
+	b.WriteString(":warning: **Open Discord Bridge — permission setup needed.**\n")
+	if len(rep.Missing) > 0 {
+		b.WriteString("• Missing permissions: " + strings.Join(rep.Missing, ", ") + "\n")
+	}
+	if rep.Hierarchy {
+		b.WriteString("• The bot's role is below the linked role.\n")
+	}
+
+	steps := []string{
+		"Open **Server Settings → Roles**.",
+		"Select the bot's own role (its name matches the bot).",
+	}
+	if len(rep.Missing) > 0 {
+		steps = append(steps, "Under **Permissions**, turn on: "+strings.Join(rep.Missing, ", ")+".")
+	}
+	if rep.Hierarchy {
+		steps = append(steps, "Back on the Roles list, **drag the bot's role above** the linked role.")
+	}
+	steps = append(steps, "That's it — the bridge re-checks automatically within ~20s (or restart it).")
+
+	b.WriteString("\n**How to fix** (a server admin):\n")
+	for i, s := range steps {
+		fmt.Fprintf(&b, "%d. %s\n", i+1, s)
+	}
+	b.WriteString("\n(Alternatively, re-invite the bot with these permissions.)")
+	return b.String()
 }
 
 // isChatEvent reports whether an event is chat — the interface convention is that any

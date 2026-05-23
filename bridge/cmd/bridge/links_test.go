@@ -1,6 +1,28 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/bits-orio/open-discord-bridge/bridge/internal/discord"
+)
+
+func TestPermissionHelp(t *testing.T) {
+	msg := permissionHelp(discord.PermissionReport{
+		Missing:   []string{"Manage Roles", "Manage Nicknames"},
+		Hierarchy: true,
+	})
+	for _, want := range []string{
+		"Manage Roles, Manage Nicknames", // listed
+		"Server Settings → Roles",        // step 1
+		"drag the bot's role above",      // hierarchy step
+		"1.", "2.", "3.",                 // numbered steps
+	} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("permission help missing %q\n---\n%s", want, msg)
+		}
+	}
+}
 
 func TestParseLinks(t *testing.T) {
 	if got := parseLinks(`{"links":[]}`); len(got) != 0 {

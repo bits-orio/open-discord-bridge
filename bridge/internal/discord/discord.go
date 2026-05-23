@@ -195,24 +195,33 @@ type PermissionCheck struct {
 	RoleAboveID string // bot's top role must outrank this role (the linked role)
 }
 
-// CheckPermissions returns human-readable warnings about missing bot permissions / role
-// hierarchy (empty = all good). Guild-level check via REST — doesn't account for per-channel
-// permission overwrites. Owner/Administrator short-circuit to no warnings.
-func (c *Client) CheckPermissions(pc PermissionCheck) []string {
+// PermissionReport is the result of a permission preflight.
+type PermissionReport struct {
+	Missing   []string // names of permissions the bot lacks (e.g. "Manage Roles")
+	Hierarchy bool     // bot's highest role is not above the linked role
+	Err       string   // set if the check itself could not run
+}
+
+// OK reports whether nothing needs fixing.
+func (r PermissionReport) OK() bool { return len(r.Missing) == 0 && !r.Hierarchy && r.Err == "" }
+
+// CheckPermissions runs a guild-level preflight via REST (doesn't account for per-channel
+// overwrites). Owner/Administrator short-circuit to an OK report.
+func (c *Client) CheckPermissions(pc PermissionCheck) PermissionReport {
 	if pc.GuildID == "" {
-		return nil
+		return PermissionReport{}
 	}
 	botID := c.session.State.User.ID
 	g, err := c.session.Guild(pc.GuildID)
 	if err != nil {
-		return []string{"could not check permissions: " + err.Error()}
+		return PermissionReport{Err: err.Error()}
 	}
 	if g.OwnerID == botID {
-		return nil
+		return PermissionReport{}
 	}
 	roles, err := c.session.GuildRoles(pc.GuildID)
 	if err != nil {
-		return []string{"could not check permissions: " + err.Error()}
+		return PermissionReport{Err: err.Error()}
 	}
 	byID := make(map[string]*discordgo.Role, len(roles))
 	for _, r := range roles {
@@ -220,7 +229,7 @@ func (c *Client) CheckPermissions(pc PermissionCheck) []string {
 	}
 	member, err := c.session.GuildMember(pc.GuildID, botID)
 	if err != nil {
-		return []string{"could not check permissions: " + err.Error()}
+		return PermissionReport{Err: err.Error()}
 	}
 
 	var perms int64
@@ -237,34 +246,31 @@ func (c *Client) CheckPermissions(pc PermissionCheck) []string {
 		}
 	}
 	if perms&discordgo.PermissionAdministrator != 0 {
-		return nil
+		return PermissionReport{}
 	}
 
-	var w []string
-	if perms&discordgo.PermissionViewChannel == 0 {
-		w = append(w, "missing View Channels")
+	var rep PermissionReport
+	need := func(bit int64, name string) {
+		if perms&bit == 0 {
+			rep.Missing = append(rep.Missing, name)
+		}
 	}
-	if perms&discordgo.PermissionSendMessages == 0 {
-		w = append(w, "missing Send Messages")
-	}
-	if perms&discordgo.PermissionReadMessageHistory == 0 {
-		w = append(w, "missing Read Message History")
-	}
-	if pc.NeedEmbed && perms&discordgo.PermissionEmbedLinks == 0 {
-		w = append(w, "missing Embed Links (embed mode is on)")
+	need(discordgo.PermissionViewChannel, "View Channels")
+	need(discordgo.PermissionSendMessages, "Send Messages")
+	need(discordgo.PermissionReadMessageHistory, "Read Message History")
+	if pc.NeedEmbed {
+		need(discordgo.PermissionEmbedLinks, "Embed Links")
 	}
 	if pc.NeedRoles {
-		if perms&discordgo.PermissionManageRoles == 0 {
-			w = append(w, "missing Manage Roles (linked role is configured)")
-		}
+		need(discordgo.PermissionManageRoles, "Manage Roles")
 		if r := byID[pc.RoleAboveID]; r != nil && botTop <= r.Position {
-			w = append(w, "the bot's role is not above the linked role — move it higher in Server Settings → Roles")
+			rep.Hierarchy = true
 		}
 	}
-	if pc.NeedNicks && perms&discordgo.PermissionManageNicknames == 0 {
-		w = append(w, "missing Manage Nicknames (linked nickname is configured)")
+	if pc.NeedNicks {
+		need(discordgo.PermissionManageNicknames, "Manage Nicknames")
 	}
-	return w
+	return rep
 }
 
 // AddRole / RemoveRole manage a guild role on a member (used to mark linked players).
