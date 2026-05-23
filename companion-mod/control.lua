@@ -216,6 +216,77 @@ commands.add_command("odb-confirm-link", "Open Discord Bridge: confirm a player 
   rcon.print("Linked " .. pend.player .. " to Discord user " .. who .. ".")
 end)
 
+-- /odb-unlink — a player removes their own link.
+commands.add_command("odb-unlink", "Unlink your Discord account", function(cmd)
+  local player = cmd.player_index and game.get_player(cmd.player_index)
+  if not player then return end
+  storage.odb.links = storage.odb.links or {}
+  if storage.odb.links[player.name] then
+    storage.odb.links[player.name] = nil
+    player.print("[Discord link] Your Discord account has been unlinked.")
+  else
+    player.print("[Discord link] You weren't linked.")
+  end
+end)
+
+-- /odb-unlink-discord <discord_id> — RCON; remove the link for a Discord user (self-serve).
+commands.add_command("odb-unlink-discord", "Open Discord Bridge: unlink a Discord user (RCON)", function(cmd)
+  if cmd.player_index then return end
+  local id = cmd.parameter and string.match(cmd.parameter, "%S+")
+  if not id then rcon.print("ERROR: usage /odb-unlink-discord <discord_id>"); return end
+  storage.odb.links = storage.odb.links or {}
+  local removed = {}
+  for player_name, link in pairs(storage.odb.links) do
+    if link.discord_id == id then removed[#removed + 1] = player_name end
+  end
+  for _, player_name in ipairs(removed) do storage.odb.links[player_name] = nil end
+  if #removed > 0 then
+    rcon.print("Unlinked: " .. table.concat(removed, ", "))
+  else
+    rcon.print("No link found for that Discord user.")
+  end
+end)
+
+-- /odb-unlink-player <name> — RCON; remove a specific player's link.
+commands.add_command("odb-unlink-player", "Open Discord Bridge: unlink a player (RCON)", function(cmd)
+  if cmd.player_index then return end
+  local name = cmd.parameter and cmd.parameter:match("^%s*(.-)%s*$")
+  if not name or name == "" then rcon.print("ERROR: usage /odb-unlink-player <name>"); return end
+  storage.odb.links = storage.odb.links or {}
+  if storage.odb.links[name] then
+    storage.odb.links[name] = nil
+    rcon.print("Unlinked player " .. name .. ".")
+  else
+    rcon.print("Player " .. name .. " is not linked.")
+  end
+end)
+
+-- /odb-unlink-all — RCON; clear every link.
+commands.add_command("odb-unlink-all", "Open Discord Bridge: clear all links (RCON)", function(cmd)
+  if cmd.player_index then return end
+  storage.odb.links = storage.odb.links or {}
+  local n = 0
+  for _ in pairs(storage.odb.links) do n = n + 1 end
+  storage.odb.links = {}
+  rcon.print("Cleared " .. n .. " link(s).")
+end)
+
+-- /odb-links — RCON; list all current links.
+commands.add_command("odb-links", "Open Discord Bridge: list all links (RCON)", function(cmd)
+  if cmd.player_index then return end
+  storage.odb.links = storage.odb.links or {}
+  local lines = {}
+  for player_name, link in pairs(storage.odb.links) do
+    local who = (link.discord_name and link.discord_name ~= "" and link.discord_name) or link.discord_id
+    lines[#lines + 1] = player_name .. " -> " .. who .. " (" .. (link.discord_id or "?") .. ")"
+  end
+  if #lines > 0 then
+    rcon.print(table.concat(lines, "\n"))
+  else
+    rcon.print("No links.")
+  end
+end)
+
 -- ─── Baseline layer: vanilla events ──────────────────────────────────────────
 
 script.on_event(defines.events.on_console_chat, function(e)

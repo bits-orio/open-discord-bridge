@@ -51,6 +51,23 @@ discord:
       args: true                 # in-game run /odb-link to get CODE, then "!link CODE"
       rcon: "/odb-confirm-link {1} {userid} {user}"
 
+    - trigger: "!unlink"         # unlink your own Discord account (no args needed)
+      args: true                 # uses {userid} only -> no typed argument required
+      rcon: "/odb-unlink-discord {userid}"
+
+    - trigger: "!links"          # admin: list all links
+      admin: true
+      rcon: "/odb-links"
+
+    - trigger: "!unlink-player"  # admin: unlink a specific player
+      admin: true
+      args: true
+      rcon: "/odb-unlink-player {args}"
+
+    - trigger: "!unlink-all"     # admin: clear all links
+      admin: true
+      rcon: "/odb-unlink-all"
+
     - trigger: "!kick"           # admin-only, takes an argument
       admin: true
       args: true                 # interpolate {1}/{args}/{user} from the message

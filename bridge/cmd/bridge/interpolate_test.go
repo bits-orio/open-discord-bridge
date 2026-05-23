@@ -36,6 +36,21 @@ func TestInterpolate(t *testing.T) {
 	}
 }
 
+func TestTemplateNeedsArgs(t *testing.T) {
+	yes := []string{"/kick {1}", "/say {args}", "/x {2} done"}
+	no := []string{"/odb-unlink-discord {userid}", "/whoami {user}", "/players online"}
+	for _, tmpl := range yes {
+		if !templateNeedsArgs(tmpl) {
+			t.Errorf("%q should need typed args", tmpl)
+		}
+	}
+	for _, tmpl := range no {
+		if templateNeedsArgs(tmpl) {
+			t.Errorf("%q should NOT need typed args", tmpl)
+		}
+	}
+}
+
 func TestInterpolateStripsInjection(t *testing.T) {
 	// A newline in user input must not survive (no second RCON line).
 	got := interpolate("/say {args}", []string{"hi\n/promote evil"}, "u", "1")

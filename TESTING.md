@@ -48,6 +48,11 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 - [ ] **Persistence:** restart the server (same save) → the link still works (name still
       tints; `linked_discord_id` still returns the ID). Links live in the mod's save
       `storage`, so they survive restarts; a brand-new map starts with none.
+- [ ] **Unlink (self):** `!unlink` in Discord (or `/odb-unlink` in-game) → removed; your
+      name stops tinting
+- [ ] **List (admin):** `!links` → lists `player -> discord (id)` for all links
+- [ ] **Admin unlink:** `!unlink-player <name>` removes one; `!unlink-all` clears all
+      (both reflected by `!links`)
 
 ## 6. Embeds (optional)
 - [ ] Set `discord.embed: true` (or `ODB_EMBED=true`), restart → events render as colored

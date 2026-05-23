@@ -415,7 +415,7 @@ func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string
 	}
 	rconCmd := cmd.Rcon
 	if cmd.Args {
-		if len(argv) == 0 {
+		if templateNeedsArgs(cmd.Rcon) && len(argv) == 0 {
 			return fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger)
 		}
 		rconCmd = interpolate(cmd.Rcon, argv, user, userID)
@@ -446,7 +446,8 @@ func buildSlash(commands []config.Command) ([]discord.SlashSpec, map[string]conf
 		}
 		byName[name] = c
 		specs = append(specs, discord.SlashSpec{
-			Name: name, Description: "Run " + c.Trigger, Admin: c.Admin, TakesArgs: c.Args,
+			Name: name, Description: "Run " + c.Trigger, Admin: c.Admin,
+			TakesArgs: c.Args && templateNeedsArgs(c.Rcon),
 		})
 	}
 	return specs, byName
@@ -565,6 +566,12 @@ func commandArgs(s string) []string {
 }
 
 var placeholderRe = regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+
+// needsArgsRe matches placeholders that require user-typed input ({args} or {1}, {2}, …).
+// {user}/{userid} are always available, so a template using only those needs no typed args.
+var needsArgsRe = regexp.MustCompile(`\{(args|[1-9][0-9]*)\}`)
+
+func templateNeedsArgs(template string) bool { return needsArgsRe.MatchString(template) }
 
 // interpolate substitutes {args} (all args), {1}.. (positional), and {user} into an
 // admin-authored template. Only called for commands with args:true. Substituted values

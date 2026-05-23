@@ -141,6 +141,18 @@ runs `/odb-link` in-game to get a short code, then runs your link command in Dis
 Other mods read the mapping via `remote.call("open-discord-bridge-v1", "linked_discord_id",
 player_name)`. (`{userid}` is the Discord user ID; `{user}` is their name.)
 
+**Managing links** — the mod also provides: `/odb-unlink` (in-game, unlink yourself),
+`/odb-unlink-discord <id>`, `/odb-unlink-player <name>`, `/odb-unlink-all`, and `/odb-links`
+(all RCON). Expose them as commands — self-serve unlink needs no typed args (it uses
+`{userid}`); the rest are admin:
+```yaml
+- { trigger: "!unlink",        args: true,  rcon: "/odb-unlink-discord {userid}" }
+- { trigger: "!links",         admin: true, rcon: "/odb-links" }
+- { trigger: "!unlink-player", admin: true, args: true, rcon: "/odb-unlink-player {args}" }
+- { trigger: "!unlink-all",    admin: true, rcon: "/odb-unlink-all" }
+```
+Links persist in the mod's save `storage` across restarts (per save/world).
+
 **Notes:**
 - Anyone in the channel can run **public** commands — keep destructive ones `admin: true`.
 - `rcon` may be **multiline** (a `/silent-command` script); it's sent as a single RCON call.
