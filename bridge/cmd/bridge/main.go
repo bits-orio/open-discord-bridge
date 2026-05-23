@@ -119,6 +119,28 @@ func main() {
 		}
 	}
 
+	// Startup permission preflight: warn (logs + Discord) about anything the bot is
+	// missing for the configured features.
+	go func() {
+		warns := dc.CheckPermissions(discord.PermissionCheck{
+			GuildID:     cfg.Discord.GuildID,
+			NeedEmbed:   cfg.Discord.Embed,
+			NeedRoles:   cfg.Discord.LinkedRoleID != "",
+			NeedNicks:   cfg.Discord.LinkedNickname != "",
+			RoleAboveID: cfg.Discord.LinkedRoleID,
+		})
+		if len(warns) == 0 {
+			return
+		}
+		for _, w := range warns {
+			log.Printf("bridge: permission warning: %s", w)
+		}
+		// Plain text (not an embed) so it posts even if Embed Links is the missing perm.
+		if ch, ok := rt.Channel("bridge.warning"); ok {
+			dc.Send(ch, ":warning: **Bridge permission issues** — "+strings.Join(warns, "; ")+". (see logs)")
+		}
+	}()
+
 	// Game → Discord.
 	var lastEvent atomic.Int64
 	var tail *transport.Tailer

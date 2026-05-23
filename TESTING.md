@@ -94,6 +94,11 @@ curl -s -H "Authorization: Bearer $BRIDGE_CONTROL_TOKEN" :7777/v1/status | pytho
 - [ ] Stop Factorio (leave the bridge running) → within ~15s a red **"disconnected"** posts
 - [ ] Start Factorio again → **"established"** posts again (no spam in between)
 
+## 9c. Permission preflight
+- [ ] With `linked_role_id` set but the bot **lacking** Manage Roles (or its role below the
+      linked role), restart → a ⚠️ warning posts to the channel and is logged on startup
+- [ ] Grant the permission / fix hierarchy, restart → no warning
+
 ## 10. Resilience
 - [ ] Restart the Factorio server while the bridge runs → bridge reconnects RCON; events
       resume after the mod truncates `events.jsonl`

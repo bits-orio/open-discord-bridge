@@ -186,6 +186,87 @@ func (c *Client) Send(channelID, content string) {
 	}
 }
 
+// PermissionCheck describes what the bridge needs the bot to be able to do.
+type PermissionCheck struct {
+	GuildID     string
+	NeedEmbed   bool
+	NeedRoles   bool   // Manage Roles (linked_role_id)
+	NeedNicks   bool   // Manage Nicknames (linked_nickname)
+	RoleAboveID string // bot's top role must outrank this role (the linked role)
+}
+
+// CheckPermissions returns human-readable warnings about missing bot permissions / role
+// hierarchy (empty = all good). Guild-level check via REST — doesn't account for per-channel
+// permission overwrites. Owner/Administrator short-circuit to no warnings.
+func (c *Client) CheckPermissions(pc PermissionCheck) []string {
+	if pc.GuildID == "" {
+		return nil
+	}
+	botID := c.session.State.User.ID
+	g, err := c.session.Guild(pc.GuildID)
+	if err != nil {
+		return []string{"could not check permissions: " + err.Error()}
+	}
+	if g.OwnerID == botID {
+		return nil
+	}
+	roles, err := c.session.GuildRoles(pc.GuildID)
+	if err != nil {
+		return []string{"could not check permissions: " + err.Error()}
+	}
+	byID := make(map[string]*discordgo.Role, len(roles))
+	for _, r := range roles {
+		byID[r.ID] = r
+	}
+	member, err := c.session.GuildMember(pc.GuildID, botID)
+	if err != nil {
+		return []string{"could not check permissions: " + err.Error()}
+	}
+
+	var perms int64
+	botTop := 0
+	if everyone := byID[pc.GuildID]; everyone != nil { // @everyone role ID == guild ID
+		perms |= everyone.Permissions
+	}
+	for _, rid := range member.Roles {
+		if r := byID[rid]; r != nil {
+			perms |= r.Permissions
+			if r.Position > botTop {
+				botTop = r.Position
+			}
+		}
+	}
+	if perms&discordgo.PermissionAdministrator != 0 {
+		return nil
+	}
+
+	var w []string
+	if perms&discordgo.PermissionViewChannel == 0 {
+		w = append(w, "missing View Channels")
+	}
+	if perms&discordgo.PermissionSendMessages == 0 {
+		w = append(w, "missing Send Messages")
+	}
+	if perms&discordgo.PermissionReadMessageHistory == 0 {
+		w = append(w, "missing Read Message History")
+	}
+	if pc.NeedEmbed && perms&discordgo.PermissionEmbedLinks == 0 {
+		w = append(w, "missing Embed Links (embed mode is on)")
+	}
+	if pc.NeedRoles {
+		if perms&discordgo.PermissionManageRoles == 0 {
+			w = append(w, "missing Manage Roles (linked role is configured)")
+		}
+		if r := byID[pc.RoleAboveID]; r != nil && botTop <= r.Position {
+			w = append(w, "the bot's role is not above the linked role — move it higher in Server Settings → Roles")
+		}
+	}
+	if pc.NeedNicks && perms&discordgo.PermissionManageNicknames == 0 {
+		w = append(w, "missing Manage Nicknames (linked nickname is configured)")
+	}
+	return w
+}
+
 // AddRole / RemoveRole manage a guild role on a member (used to mark linked players).
 // The bot needs Manage Roles and a role above the target role.
 func (c *Client) AddRole(guildID, userID, roleID string) error {

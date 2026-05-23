@@ -305,6 +305,10 @@ Reference artifacts:
 - **Shutdown:** graceful on `SIGINT`/`SIGTERM`.
 - **Restart:** `POST /v1/restart` performs a clean exit; a supervisor (systemd
   `Restart=always`, Docker/Pterodactyl restart policy) brings it back with fresh config.
+- **Permission preflight:** on connect, the bridge checks its Discord permissions for the
+  configured features (Send/View/Read; Embed Links if embeds; Manage Roles + role hierarchy
+  and Manage Nicknames if linked role/nickname) and warns about anything missing — in the
+  logs and as a one-off message to the bridged channel.
 - **Connection announcements:** with `discord.announce_status` (or `ODB_ANNOUNCE_STATUS`),
   the bridge polls the RCON+mod handshake every ~15s and posts `bridge.established` /
   `bridge.disconnected` to Discord when the link to Factorio comes up or drops. They route
