@@ -68,15 +68,23 @@ type RCONConfig struct {
 }
 
 type DiscordConfig struct {
-	TokenEnv string  `yaml:"token_env"`
-	Token    string  `yaml:"-"` // resolved from env at load time
-	GuildID  string  `yaml:"guild_id"`
-	Routes   []Route `yaml:"routes"`
+	TokenEnv string    `yaml:"token_env"`
+	Token    string    `yaml:"-"` // resolved from env at load time
+	GuildID  string    `yaml:"guild_id"`
+	Routes   []Route   `yaml:"routes"`
+	Commands []Command `yaml:"commands"`
 }
 
 type Route struct {
 	Source    string `yaml:"source"`
 	ChannelID string `yaml:"channel_id"`
+}
+
+// Command maps a Discord message trigger (matched on the first word) to an RCON command
+// the bridge runs, posting the reply back. Admins choose exactly which commands exist.
+type Command struct {
+	Trigger string `yaml:"trigger"`
+	Rcon    string `yaml:"rcon"`
 }
 
 // Load reads and validates configuration. If the config file is absent, it builds the
@@ -166,6 +174,11 @@ func (c *Config) validate() error {
 	if c.ControlAPI.Enabled && c.ControlAPI.AuthToken == "" {
 		return fmt.Errorf("control_api.enabled but auth token empty; set env var %q", c.ControlAPI.AuthTokenEnv)
 	}
+	for i, cmd := range c.Discord.Commands {
+		if cmd.Trigger == "" || cmd.Rcon == "" {
+			return fmt.Errorf("discord.commands[%d] needs both trigger and rcon", i)
+		}
+	}
 	return nil
 }
 
@@ -222,6 +235,12 @@ func LoadFromEnv() (*Config, error) {
 	}
 	c.Discord.Routes = routes
 
+	cmds, err := commandsFromEnv()
+	if err != nil {
+		return nil, err
+	}
+	c.Discord.Commands = cmds
+
 	if c.ControlAPI.Enabled && c.ControlAPI.Listen == "" {
 		c.ControlAPI.Listen = "127.0.0.1:7777"
 	}
@@ -254,6 +273,27 @@ func routesFromEnv() ([]Route, error) {
 		return []Route{{Source: "*", ChannelID: ch}}, nil
 	}
 	return nil, nil // validate reports the empty-routes error
+}
+
+// commandsFromEnv parses ODB_COMMANDS ("!trigger=/rcon command;!t2=/cmd2").
+func commandsFromEnv() ([]Command, error) {
+	raw := os.Getenv("ODB_COMMANDS")
+	if raw == "" {
+		return nil, nil
+	}
+	var cmds []Command
+	for _, entry := range strings.Split(raw, ";") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		trig, rc, ok := strings.Cut(entry, "=")
+		if !ok {
+			return nil, fmt.Errorf("ODB_COMMANDS entry %q must be trigger=rcon_command", entry)
+		}
+		cmds = append(cmds, Command{Trigger: strings.TrimSpace(trig), Rcon: strings.TrimSpace(rc)})
+	}
+	return cmds, nil
 }
 
 func getenvDefault(key, def string) string {

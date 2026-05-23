@@ -41,6 +41,7 @@ env vars and no file is mounted.
 | `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
 | `ODB_ROUTES` | Explicit routes: `source=channel_id,source=channel_id` | — |
+| `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` | — |
 | `ODB_CONTROL_API_ENABLED` | Enable the Control API | `false` |
 | `ODB_CONTROL_API_LISTEN` | Control API bind address | `127.0.0.1:7777` |
 | `BRIDGE_CONTROL_TOKEN` | Control API bearer token (**secret**, required if enabled) | — |
@@ -55,7 +56,24 @@ Provide routes via **either** `ODB_DISCORD_CHANNEL_ID` (simple, one channel) **o
 
 ---
 
-## 2. Transports: how the bridge reads game events
+## 2. Discord → RCON commands
+
+Inbound Discord messages are normally relayed into game chat. But a message whose **first
+word** matches a configured command runs an **RCON command** instead and posts the reply.
+Admins choose exactly which commands exist:
+
+```yaml
+discord:
+  commands:
+    - trigger: "!players"
+      rcon: "/players online"
+```
+Env mode: `ODB_COMMANDS="!players=/players online;!evo=/evolution"`.
+
+Anyone who can post in a bridged channel can trigger these, so only expose safe commands.
+(Per-role restriction is a planned enhancement.)
+
+## 3. Transports: how the bridge reads game events
 
 Inbound (Discord → game) is **always** RCON. The transport only concerns how the bridge
 reads the mod's `events.jsonl`:
@@ -65,13 +83,26 @@ reads the mod's `events.jsonl`:
 | **Local (file)** | Reads the events file from a filesystem path (`inotify`-free polling) | **Available** | Bridge shares a filesystem with Factorio — same host, or a shared/bind mount |
 | **Shared mount** | Local transport against a bind-mounted Factorio data dir | **Available** (it *is* Local) | Bridge in its own container, but the host can mount Factorio's data dir into it |
 | **SFTP** | Pulls the events file over SFTP (key or password auth, self-reconnecting) | **Available** | Isolated containers with no shared FS; fits Pterodactyl's per-server SFTP |
+| **SSH streaming** | Streams events over a persistent SSH connection (`tail -F`) | **Planned (deprioritized, later phase)** | Large fleets where per-server SFTP polling overhead matters; an alternative to SFTP |
 
 When Factorio and the bridge are on different hosts/containers, set `ODB_RCON_ADDRESS`
 (or `factorio.rcon.address`) to the Factorio server's network address — not `127.0.0.1`.
 
 ---
 
-## 3. Deployment methods
+## 4. Deployment methods
+
+Target deployments, in priority order (RCON is used in all of them):
+
+| # | What launches | Where | Transport(s) | Status |
+|---|---|---|---|---|
+| 1 | Factorio + bridge together | bare metal | Local (file) | `start-all.sh` ✅ |
+| 2 | Bridge only | bare metal | Local (file) or SFTP | run the binary ✅ (helper script planned) |
+| 3 | Factorio + bridge together | single container (sidecar) | Local (file) | entrypoint planned |
+| 4 | Bridge only | single container | SFTP | `docker run` (env mode) ✅ |
+| 5 | Factorio + bridge | separate containers (compose) | shared volume (Local) or SFTP | `docker-compose.yml` ✅ |
+
+SSH streaming is deliberately deferred to a later phase as an alternative to SFTP.
 
 ### A. Bare metal / local (no container)
 Bridge and Factorio on the same machine; Local transport over loopback RCON.
@@ -135,7 +166,7 @@ Each process is its own panel-managed container; the panel controls lifecycle. T
 
 ---
 
-## 4. Lifecycle & operations
+## 5. Lifecycle & operations
 
 - **Logs:** stdout/stderr (panel- and Docker-friendly).
 - **Shutdown:** graceful on `SIGINT`/`SIGTERM`.
@@ -145,7 +176,7 @@ Each process is its own panel-managed container; the panel controls lifecycle. T
   /v1/config` (live routing reload), `/v1/discord/guilds`, `/v1/discord/channels`,
   `POST /v1/test`. Contract: [`bridge/pkg/controlapi/spec/openapi.yaml`](bridge/pkg/controlapi/spec/openapi.yaml).
 
-## 5. Security
+## 6. Security
 
 - Secrets only via environment variables — never in `bridge.yaml` or the image.
 - Control API requires a bearer token; bind it to loopback (or a private network) and

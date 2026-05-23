@@ -44,6 +44,29 @@ func TestLoadFromEnvExplicitRoutes(t *testing.T) {
 	}
 }
 
+func TestLoadFromEnvCommands(t *testing.T) {
+	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
+	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
+	t.Setenv("ODB_COMMANDS", "!players=/players online; !evo=/evolution")
+
+	c, err := Load("/no/such/bridge.yaml")
+	if err != nil {
+		t.Fatalf("env load: %v", err)
+	}
+	if len(c.Discord.Commands) != 2 {
+		t.Fatalf("want 2 commands, got %+v", c.Discord.Commands)
+	}
+	if c.Discord.Commands[0].Trigger != "!players" || c.Discord.Commands[0].Rcon != "/players online" {
+		t.Fatalf("cmd[0] parse: %+v", c.Discord.Commands[0])
+	}
+	if c.Discord.Commands[1].Trigger != "!evo" || c.Discord.Commands[1].Rcon != "/evolution" {
+		t.Fatalf("cmd[1] trim/parse: %+v", c.Discord.Commands[1])
+	}
+}
+
 func TestLoadFromEnvMissingTokenFails(t *testing.T) {
 	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
 	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")

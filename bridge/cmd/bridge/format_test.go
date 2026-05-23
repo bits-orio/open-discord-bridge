@@ -28,6 +28,22 @@ func TestFormatGenericPrefersText(t *testing.T) {
 	}
 }
 
+func TestFirstWord(t *testing.T) {
+	cases := map[string]string{
+		"!players":          "!players",
+		"!players now":      "!players",
+		"  !evo  arg ":      "!evo",
+		"":                  "",
+		"   ":               "",
+		"hello world there": "hello",
+	}
+	for in, want := range cases {
+		if got := firstWord(in); got != want {
+			t.Errorf("firstWord(%q) = %q; want %q", in, got, want)
+		}
+	}
+}
+
 func TestFormatGenericFallsBackToKV(t *testing.T) {
 	got := formatGeneric("oarc.spawn", map[string]any{"player": "bob", "x": float64(5)})
 	want := "[oarc → spawn] player=bob, x=5"

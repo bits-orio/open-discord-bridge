@@ -31,6 +31,14 @@ discord:
       channel_id: "111111111111111111"
     - source: "*"
       channel_id: "111111111111111111"
+  # Discord -> RCON commands. A message whose first word matches `trigger` runs `rcon`
+  # and posts the reply. You choose exactly which commands exist — only expose safe ones,
+  # since anyone in the channel can trigger them.
+  commands:
+    - trigger: "!players"
+      rcon: "/players online"
+    # - trigger: "!evolution"
+    #   rcon: "/evolution"
 
 # Open HTTP Control API (off by default). Any portal/CLI integrates against the same
 # spec — see pkg/controlapi/spec/openapi.yaml. Bind to loopback unless you front it

@@ -43,10 +43,21 @@ func main() {
 	rc := rcon.New(cfg.Factorio.RCON.Address, cfg.Factorio.RCON.Password)
 	defer rc.Close()
 
+	// Admin-configured Discord commands: first word of a message maps to an RCON command.
+	cmdMap := make(map[string]string, len(cfg.Discord.Commands))
+	for _, c := range cfg.Discord.Commands {
+		cmdMap[c.Trigger] = c.Rcon
+	}
+
 	// Discord → game.
 	onInbound := func(user, message, channelID string) {
-		if strings.TrimSpace(message) == "!players" {
-			if resp, err := rc.Execute("/players online"); err == nil {
+		if rconCmd, ok := cmdMap[firstWord(message)]; ok {
+			resp, err := rc.Execute(rconCmd)
+			if err != nil {
+				log.Printf("rcon: command %q failed: %v", rconCmd, err)
+				return
+			}
+			if strings.TrimSpace(resp) != "" {
 				dc.Send(channelID, "```\n"+resp+"\n```")
 			}
 			return
@@ -373,6 +384,14 @@ func kvSummary(data map[string]any) string {
 		parts = append(parts, fmt.Sprintf("%s=%s", k, str(data[k])))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// firstWord returns the first whitespace-separated token of s ("" if none).
+func firstWord(s string) string {
+	if f := strings.Fields(s); len(f) > 0 {
+		return f[0]
+	}
+	return ""
 }
 
 // str renders a JSON value as a tidy string (whole-number floats lose the decimal).
