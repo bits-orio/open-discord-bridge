@@ -84,6 +84,17 @@ func (c *Client) Send(channelID, content string) {
 	}
 }
 
+// SendEmbed posts an event as a colored embed (fire-and-forget).
+func (c *Client) SendEmbed(channelID, description string, color int) {
+	_, err := c.session.ChannelMessageSendEmbed(channelID, &discordgo.MessageEmbed{
+		Description: description,
+		Color:       color,
+	})
+	if err != nil {
+		fmt.Printf("discord: embed send to %s failed: %v\n", channelID, err)
+	}
+}
+
 // GuildInfo / ChannelInfo are lightweight projections for the Control API proxy.
 type GuildInfo struct {
 	ID   string

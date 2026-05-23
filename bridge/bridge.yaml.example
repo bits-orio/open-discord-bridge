@@ -23,6 +23,7 @@ poll_interval: 1s
 discord:
   token_env: DISCORD_BOT_TOKEN
   guild_id: "000000000000000000"
+  embed: false              # true = send events as colored embeds instead of plain text
   # First matching route wins. Patterns: exact ("vanilla.chat"),
   # namespace glob ("mts.*"), or catch-all ("*").
   # Every channel listed here also accepts Discord messages back into the game.

@@ -56,6 +56,7 @@ env vars and no file is mounted.
 | `ODB_REQUIRED_MOD_VERSION` | Minimum mod version (surfaced in `/v1/status`) | — |
 | `DISCORD_BOT_TOKEN` | Discord bot token (**secret**) | — (required) |
 | `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
+| `ODB_EMBED` | Render events as colored embeds instead of plain text | `false` |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
 | `ODB_ROUTES` | Explicit routes: `source=channel_id,source=channel_id` | — |
 | `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` (public, single-line only) | — |

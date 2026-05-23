@@ -44,6 +44,15 @@ func TestFirstWord(t *testing.T) {
 	}
 }
 
+func TestEventColor(t *testing.T) {
+	if eventColor("vanilla.player_died") != 0xED4245 {
+		t.Error("death should be red")
+	}
+	if eventColor("mts.team_created") != eventColor("anything.else") {
+		t.Error("non-vanilla events should share the neutral color")
+	}
+}
+
 func TestFormatGenericFallsBackToKV(t *testing.T) {
 	got := formatGeneric("oarc.spawn", map[string]any{"player": "bob", "x": float64(5)})
 	want := "[oarc → spawn] player=bob, x=5"

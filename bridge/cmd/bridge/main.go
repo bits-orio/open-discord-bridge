@@ -130,7 +130,11 @@ func main() {
 		if !ok {
 			return // no route for this event; drop silently
 		}
-		dc.Send(channel, formatEvent(ev))
+		if cfg.Discord.Embed {
+			dc.SendEmbed(channel, formatEvent(ev), eventColor(ev.Event))
+		} else {
+			dc.Send(channel, formatEvent(ev))
+		}
 	}
 
 	// baseCtx lets the Control API request a restart (clean exit → supervisor restarts).
@@ -421,6 +425,28 @@ func resolveAdmin(a config.AdminConfig, msg discord.InboundMessage) bool {
 		}
 	}
 	return a.PermissionFallback() && msg.IsAdmin
+}
+
+// eventColor maps an event key to an embed color (used when discord.embed is on).
+func eventColor(eventKey string) int {
+	switch eventKey {
+	case "vanilla.chat":
+		return 0x5865F2 // blurple
+	case "vanilla.player_joined":
+		return 0x57F287 // green
+	case "vanilla.player_left":
+		return 0x99AAB5 // grey
+	case "vanilla.player_died":
+		return 0xED4245 // red
+	case "vanilla.rocket_launched":
+		return 0x3498DB // blue
+	case "vanilla.research_finished":
+		return 0x9B59B6 // purple
+	case "vanilla.game_started":
+		return 0x1ABC9C // teal
+	default:
+		return 0x95A5A6 // neutral (mts.*, oarc.*, custom)
+	}
 }
 
 // firstWord returns the first whitespace-separated token of s ("" if none).

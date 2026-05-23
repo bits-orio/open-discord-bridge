@@ -71,6 +71,7 @@ type DiscordConfig struct {
 	TokenEnv string      `yaml:"token_env"`
 	Token    string      `yaml:"-"` // resolved from env at load time
 	GuildID  string      `yaml:"guild_id"`
+	Embed    bool        `yaml:"embed"` // render outbound events as colored embeds
 	Routes   []Route     `yaml:"routes"`
 	Admins   AdminConfig `yaml:"admins"`
 	Commands []Command   `yaml:"commands"`
@@ -229,6 +230,7 @@ func LoadFromEnv() (*Config, error) {
 			TokenEnv: "DISCORD_BOT_TOKEN",
 			Token:    os.Getenv("DISCORD_BOT_TOKEN"),
 			GuildID:  os.Getenv("ODB_DISCORD_GUILD_ID"),
+			Embed:    parseBool(os.Getenv("ODB_EMBED")),
 			Admins: AdminConfig{
 				Roles:                splitCSV(os.Getenv("ODB_ADMIN_ROLES")),
 				Users:                splitCSV(os.Getenv("ODB_ADMIN_USERS")),
