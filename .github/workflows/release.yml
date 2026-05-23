@@ -48,22 +48,23 @@ jobs:
         with:
           go-version-file: bridge/go.mod
 
-      - name: Build cross-platform binaries
-        working-directory: bridge
+      - name: Build cross-platform binaries (bridge + wizard)
         run: |
           mkdir -p dist
           for target in linux/amd64 linux/arm64 windows/amd64 darwin/arm64; do
             os=${target%/*}; arch=${target#*/}
             ext=""; [ "$os" = windows ] && ext=".exe"
             echo "building $os/$arch"
-            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags "-s -w" \
-              -o "dist/odb-bridge-$os-$arch$ext" ./cmd/bridge
+            ( cd bridge && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags "-s -w" \
+                -o "../dist/odb-bridge-$os-$arch$ext" ./cmd/bridge )
+            ( cd wizard && CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -ldflags "-s -w" \
+                -o "../dist/odb-wizard-$os-$arch$ext" ./cmd/wizard )
           done
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            bridge/dist/*
+            dist/*
             deploy/pterodactyl-egg.json
           generate_release_notes: true
