@@ -296,6 +296,23 @@ Reference artifacts:
   front it with TLS if exposed.
 - Keep RCON off the public internet (loopback, private network, or tunnel).
 
+### Command access model
+- **Inbound Discord chat is never run as a game command** — only a message whose first
+  word matches a configured trigger runs RCON; everything else is relayed as chat text.
+- **Two trust boundaries:** in-game, mod commands guard on `cmd.player_index` so the
+  RCON-only ones (`/odb-incoming`, `/odb-status`, `/odb-confirm-link`, `/odb-unlink-*`,
+  `/odb-links`) can't be run from a player's console — only `/odb-link` and `/odb-unlink`
+  are player self-service. In Discord, commands gated with `admin: true` require an admin.
+- **`{userid}` is gateway-supplied, not from the message** — so `!unlink` can only unlink
+  the caller's own account.
+- **Arg interpolation is sanitized** (newlines/control chars stripped) so user input can't
+  inject a second RCON line.
+- **You own the config risk:** a destructive RCON command mapped **without** `admin: true`
+  is runnable by anyone who can post in the channel. Keep destructive commands
+  `admin: true`; only expose read-only ones (e.g. `/players`) publicly; restrict the
+  bridged channel if needed. An admin-only `/c`/`/silent-command` command still grants
+  admins arbitrary Lua — by design.
+
 ## 7. Releasing (maintainers)
 
 CI/CD lives in `.github/workflows/` (runs once the repo is on GitHub):
