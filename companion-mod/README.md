@@ -44,6 +44,10 @@ if remote.interfaces["open-discord-bridge-v1"] then
   })
 end
 
+-- Chat vs notable events: name a chat-style relay event "<namespace>.chat" (e.g.
+-- "mts.chat"). The bridge renders any "chat"/"*.chat" event as plain text even when
+-- embeds are on, while other events (e.g. "mts.team_created") become colored embeds.
+
 -- Subscribe to inbound Discord messages for context-aware delivery.
 script.on_event(
   remote.call("open-discord-bridge-v1", "get_event_id", "on_incoming"),

@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+func TestIsChatEvent(t *testing.T) {
+	chat := []string{"chat", "vanilla.chat", "mts.chat", "oarc.chat"}
+	notChat := []string{"vanilla.player_joined", "mts.team_created", "bridge.established", "chatter", "x.chatroom"}
+	for _, k := range chat {
+		if !isChatEvent(k) {
+			t.Errorf("%q should be chat", k)
+		}
+	}
+	for _, k := range notChat {
+		if isChatEvent(k) {
+			t.Errorf("%q should NOT be chat", k)
+		}
+	}
+}
+
 func TestBridgeStatusFormatting(t *testing.T) {
 	if eventColor("bridge.established") != 0x57F287 {
 		t.Error("established should be green")

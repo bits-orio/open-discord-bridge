@@ -60,6 +60,8 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 - [ ] Each non-vanilla event type gets its own **stable, distinct** color — e.g.
       `mts.team_created` vs `mts.team_released` differ, and the same key is the same color
       every time (deterministic from the key, no per-mod hardcoding)
+- [ ] **Chat stays plain text** even with embeds on — `vanilla.chat` (and any
+      `<namespace>.chat`) is not embedded; team/milestone events still embed
 
 ## 7. MTS integration (run with multi-team-support loaded)
 - [ ] Claim a team → `[mts → team created]` / `[mts → player joined team]` in Discord

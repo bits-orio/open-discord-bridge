@@ -105,13 +105,14 @@ func main() {
 		log.Printf("bridge: companion mod not reachable over RCON yet (will retry on demand)")
 	}
 
-	// Route an event to its channel and post it (embed or plain text).
+	// Route an event to its channel and post it. In embed mode everything is a colored
+	// embed except chat (kept as plain text, since chat-as-embeds reads poorly).
 	emit := func(ev Event) {
 		channel, ok := rt.Channel(ev.Event)
 		if !ok {
 			return
 		}
-		if cfg.Discord.Embed {
+		if cfg.Discord.Embed && !isChatEvent(ev.Event) {
 			dc.SendEmbed(channel, formatEvent(ev), eventColor(ev.Event))
 		} else {
 			dc.Send(channel, formatEvent(ev))
@@ -545,6 +546,14 @@ func resolveAdmin(a config.AdminConfig, msg discord.InboundMessage) bool {
 		}
 	}
 	return a.PermissionFallback() && msg.IsAdmin
+}
+
+// isChatEvent reports whether an event is chat — the interface convention is that any
+// event keyed "chat" or "<namespace>.chat" is chat. Such events render as plain text even
+// in embed mode, so integrators can mark chat-style relay (e.g. "mts.chat") vs notable
+// events (e.g. "mts.team_created", which embed) purely by how they name the event.
+func isChatEvent(eventKey string) bool {
+	return eventKey == "chat" || strings.HasSuffix(eventKey, ".chat")
 }
 
 // eventColor maps an event key to an embed color (used when discord.embed is on).

@@ -56,7 +56,7 @@ env vars and no file is mounted.
 | `ODB_REQUIRED_MOD_VERSION` | Minimum mod version (surfaced in `/v1/status`) | — |
 | `DISCORD_BOT_TOKEN` | Discord bot token (**secret**) | — (required) |
 | `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
-| `ODB_EMBED` | Render events as colored embeds instead of plain text | `false` |
+| `ODB_EMBED` | Render events as colored embeds (except chat — see below) | `false` |
 | `ODB_ANNOUNCE_STATUS` | Post bridge↔Factorio connect/disconnect to Discord | `false` |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
 | `ODB_ROUTES` | Explicit routes: `source=channel_id,source=channel_id` | — |
@@ -74,6 +74,11 @@ env vars and no file is mounted.
 
 Provide routes via **either** `ODB_DISCORD_CHANNEL_ID` (simple, one channel) **or**
 `ODB_ROUTES` (e.g. `vanilla.chat=111,mts.*=222,*=111`).
+
+**Embeds:** with `embed: true` (`ODB_EMBED`), events render as colored embeds — **except
+chat**, which stays plain text. "Chat" is any event keyed `chat` or `<namespace>.chat`, so
+an integrator marks a relay as chat (plain) vs a notable event (embed) just by naming it
+(`mts.chat` → plain; `mts.team_created` → embed).
 
 ### Which setup path? (also pick one)
 
