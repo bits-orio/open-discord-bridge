@@ -2,6 +2,7 @@
 /.env
 /bridge/.env
 /bridge/bridge.yaml
+/bridge/bridge.sftp.yaml
 
 # Built binary
 /bridge/odb-bridge
