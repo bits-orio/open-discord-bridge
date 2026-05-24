@@ -8,11 +8,8 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 BRIDGE="$REPO/bridge/odb-bridge"
 CONFIG="${BRIDGE_CONFIG:-$REPO/bridge/bridge.yaml}"
 
-if [[ ! -x "$BRIDGE" ]]; then
-    echo "ERROR: $BRIDGE not built — run ./install.sh, or:" >&2
-    echo "       (cd bridge && go build -o odb-bridge ./cmd/bridge)" >&2
-    exit 1
-fi
+# Rebuild if sources changed (no-op without Go; see build-bridge.sh).
+"$REPO/build-bridge.sh"
 
 ENV_FILE="$REPO/bridge/.env"
 if [[ -f "$ENV_FILE" ]]; then

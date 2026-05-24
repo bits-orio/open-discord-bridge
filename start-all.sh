@@ -13,11 +13,8 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 RCON_PORT="${RCON_PORT:-27015}"
 
-BRIDGE="$REPO/bridge/odb-bridge"
-if [[ ! -x "$BRIDGE" ]]; then
-    echo "ERROR: $BRIDGE missing — run ./install.sh first." >&2
-    exit 1
-fi
+# Rebuild if sources changed (no-op without Go; see build-bridge.sh).
+"$REPO/build-bridge.sh"
 
 # Start the server in the background.
 "$REPO/start-server.sh" &
