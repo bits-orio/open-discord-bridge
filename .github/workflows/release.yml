@@ -151,7 +151,7 @@ jobs:
         run: |
           FOLDER="${{ steps.info.outputs.folder }}"
           mkdir -p "build/${FOLDER}"
-          cp companion-mod/info.json companion-mod/control.lua companion-mod/changelog.txt "build/${FOLDER}/"
+          cp companion-mod/info.json companion-mod/control.lua companion-mod/changelog.txt companion-mod/thumbnail.png "build/${FOLDER}/"
           [ -f companion-mod/README.md ] && cp companion-mod/README.md "build/${FOLDER}/"
           (cd build && zip -r "../${FOLDER}.zip" "${FOLDER}")
 
