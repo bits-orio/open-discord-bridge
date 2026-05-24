@@ -73,8 +73,9 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 - [ ] **Research is team-aware:** completing a tech posts `<team> researched <tech>` (from
       MTS), and you do **not** also get a plain team-less `Research complete:` line (MTS
       disables the baseline research event)
-- [ ] **Embed styling:** with `embed: true`, mts.* events show the label as the embed
-      **title** (bold) with the sentence below, each in its category color
+- [ ] **Embed styling:** with `embed: true`, mts.* events render as a **single line**
+      (`[mts → research finished] Team 01 researched …`) distinguished by the embed's
+      left-bar color (stable per event key)
 
 ## 8. Transports
 - [ ] **Local** (default) — events flow as above

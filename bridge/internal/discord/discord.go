@@ -289,10 +289,9 @@ func (c *Client) SetNickname(guildID, userID, nick string) error {
 	return c.session.GuildMemberNickname(guildID, userID, nick)
 }
 
-// SendEmbed posts an event as a colored embed (fire-and-forget). An empty title is omitted.
-func (c *Client) SendEmbed(channelID, title, description string, color int) {
+// SendEmbed posts an event as a single-line colored embed (the color is the left bar).
+func (c *Client) SendEmbed(channelID, description string, color int) {
 	_, err := c.session.ChannelMessageSendEmbed(channelID, &discordgo.MessageEmbed{
-		Title:       title,
 		Description: description,
 		Color:       color,
 	})

@@ -113,8 +113,7 @@ func main() {
 			return
 		}
 		if cfg.Discord.Embed && !isChatEvent(ev.Event) {
-			title, desc := formatEmbed(ev)
-			dc.SendEmbed(channel, title, desc, eventColor(ev.Event))
+			dc.SendEmbed(channel, formatEvent(ev), eventColor(ev.Event))
 		} else {
 			dc.Send(channel, formatEvent(ev))
 		}
@@ -582,18 +581,6 @@ func eventLabel(eventKey string) string {
 
 // humanizeKey is the bracketed label for plain text, e.g. "[mts → team created]".
 func humanizeKey(eventKey string) string { return "[" + eventLabel(eventKey) + "]" }
-
-// formatEmbed returns the (title, description) for an event's embed. Generic events use
-// the humanized label as a bold title and the sentence as the body, so the category
-// stands out. The bridge's own vanilla.*/bridge.* one-liners stay as the description.
-func formatEmbed(ev Event) (title, description string) {
-	switch ns, _, _ := strings.Cut(ev.Event, "."); ns {
-	case "vanilla", "bridge":
-		return "", formatEvent(ev)
-	default:
-		return eventLabel(ev.Event), genericBody(ev.Data)
-	}
-}
 
 func firstString(data map[string]any, keys ...string) string {
 	for _, k := range keys {
