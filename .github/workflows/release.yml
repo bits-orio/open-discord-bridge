@@ -1,6 +1,7 @@
 name: release
 
 # Tag a release to publish: `git tag v0.1.0 && git push origin v0.1.0`.
+# The tag must match companion-mod/info.json's version (v<version>).
 on:
   push:
     tags: ["v*"]
@@ -10,6 +11,7 @@ permissions:
   packages: write # push images to GHCR
 
 jobs:
+  # Container images build in parallel — they don't need the changelog notes.
   images:
     runs-on: ubuntu-latest
     steps:
@@ -40,13 +42,118 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/open-discord-bridge-sidecar:latest
             ghcr.io/${{ github.repository_owner }}/open-discord-bridge-sidecar:${{ github.ref_name }}
 
-  binaries:
+  release:
     runs-on: ubuntu-latest
+    env:
+      # Hoisted to job scope so step-level `if:` conditions can see them.
+      DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+      DISCORD_ANNOUNCEMENTS_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
+      FACTORIO_API_KEY: ${{ secrets.FACTORIO_API_KEY }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need history for the changelog/git-log fallback
+
       - uses: actions/setup-go@v5
         with:
           go-version-file: bridge/go.mod
+
+      - name: Read mod info
+        id: info
+        run: |
+          NAME=$(jq -r .name companion-mod/info.json)
+          VERSION=$(jq -r .version companion-mod/info.json)
+          echo "name=${NAME}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "folder=${NAME}_${VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Sanity-check tag matches info.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$TAG" != "${{ steps.info.outputs.version }}" ]; then
+            echo "::error::tag v${TAG} does not match companion-mod/info.json version ${{ steps.info.outputs.version }}"
+            exit 1
+          fi
+
+      # Tag of the most recent PUBLISHED release (not just the most recent tag —
+      # a tag can exist without a release if an earlier run failed). Excludes the
+      # tag being pushed so a re-push doesn't collapse the notes to empty.
+      - name: Fetch previous published release
+        id: prev
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          CURRENT_TAG="${GITHUB_REF_NAME}"
+          PREV_TAG=$(gh api "repos/${{ github.repository }}/releases" \
+            --jq "[.[] | select(.tag_name != \"${CURRENT_TAG}\") | select(.draft == false)][0].tag_name // \"\"" \
+            2>/dev/null || true)
+          PREV_VERSION="${PREV_TAG#v}"
+          echo "tag=${PREV_TAG}"         >> "$GITHUB_OUTPUT"
+          echo "version=${PREV_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Previous published release: '${PREV_TAG}' (version '${PREV_VERSION}')"
+
+      # Walk changelog.txt (newest-first) including entries until we reach the
+      # previous published version. Falls back to git log subjects.
+      - name: Extract release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.info.outputs.version }}"
+          PREV_VERSION="${{ steps.prev.outputs.version }}"
+
+          NOTES=$(awk -v prev="$PREV_VERSION" '
+            BEGIN { collecting = 0 }
+            /^-{50,}$/ {
+              if (collecting) print ""
+              next
+            }
+            /^Version: / {
+              if (prev != "" && $2 == prev) { exit }
+              collecting = 1
+              print "### " $0
+              next
+            }
+            /^Date: / {
+              if (collecting) print "_" $0 "_"
+              next
+            }
+            collecting {
+              sub(/^  /, "")
+              print
+            }
+          ' changelog.txt)
+
+          if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
+            PREV_TAG="${{ steps.prev.outputs.tag }}"
+            if [ -n "$PREV_TAG" ]; then
+              NOTES=$(git log --pretty=format:"- %s" "${PREV_TAG}..HEAD" \
+                | grep -v "^- Bump version" || true)
+            else
+              NOTES=$(git log --pretty=format:"- %s" HEAD \
+                | grep -v "^- Bump version" | head -50 || true)
+            fi
+          fi
+
+          NOTES="${NOTES:0:4000}" # Discord embed description limit (~4096)
+          {
+            echo 'notes<<NOTES_EOF'
+            echo "$NOTES"
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+          echo "--- Release notes preview ---"
+          echo "$NOTES"
+          echo "--- End preview ---"
+
+      # Companion Factorio mod zip: <name>_<version>/{info.json,control.lua,…}
+      # plus changelog.txt so the mod portal page shows it.
+      - name: Build companion mod zip
+        run: |
+          FOLDER="${{ steps.info.outputs.folder }}"
+          mkdir -p "build/${FOLDER}"
+          cp companion-mod/info.json companion-mod/control.lua "build/${FOLDER}/"
+          [ -f companion-mod/README.md ] && cp companion-mod/README.md "build/${FOLDER}/"
+          cp changelog.txt "build/${FOLDER}/"
+          (cd build && zip -r "../${FOLDER}.zip" "${FOLDER}")
 
       - name: Build cross-platform binaries (bridge + wizard)
         run: |
@@ -61,10 +168,102 @@ jobs:
                 -o "../dist/odb-wizard-$os-$arch$ext" ./cmd/wizard )
           done
 
-      - name: Publish GitHub Release
+      - name: Create GitHub Release
+        id: release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*
             deploy/pterodactyl-egg.json
-          generate_release_notes: true
+            ${{ steps.info.outputs.folder }}.zip
+          # Curated notes from changelog.txt (canonical for this project).
+          body: ${{ steps.notes.outputs.notes }}
+
+      - name: Post release announcement to Discord (changelog channel)
+        if: ${{ env.DISCORD_WEBHOOK != '' }}
+        env:
+          # Pass via env, not ${{ }} inlining: notes may contain quotes/backticks
+          # that would break the bash script if substituted into it literally.
+          RELEASE_VERSION: ${{ steps.info.outputs.version }}
+          RELEASE_URL:     ${{ steps.release.outputs.url }}
+          RELEASE_NOTES:   ${{ steps.notes.outputs.notes }}
+        run: |
+          PAYLOAD=$(jq -n \
+            --arg title "Open Discord Bridge v${RELEASE_VERSION} Released!" \
+            --arg desc  "$RELEASE_NOTES" \
+            --arg url   "$RELEASE_URL" \
+            '{
+              embeds: [{
+                title:       $title,
+                description: $desc,
+                url:         $url,
+                color:       5793266
+              }]
+            }')
+
+          HTTP_CODE=$(curl -sS \
+            -w "%{http_code}" \
+            -o /tmp/discord_response.txt \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$DISCORD_WEBHOOK")
+          CURL_EXIT=$?
+
+          echo "--- Discord HTTP status: ${HTTP_CODE} (curl exit ${CURL_EXIT})"
+          cat /tmp/discord_response.txt || true
+          echo ""
+          if [ "$CURL_EXIT" -ne 0 ] || [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Discord webhook returned non-success status (${HTTP_CODE})"
+            exit 1
+          fi
+
+      # Upload the companion mod to the Factorio mod portal. Skipped if no API
+      # key is set (the bridge itself ships via the GitHub release + GHCR, so
+      # the portal is optional). Idempotent — safe to re-run. Recover a failed
+      # upload via the manual "Upload to Mod Portal" workflow.
+      - name: Upload companion mod to Factorio mod portal
+        id: upload
+        if: ${{ always() && steps.release.outcome == 'success' && env.FACTORIO_API_KEY != '' }}
+        run: |
+          ./tools/upload_mod_portal.sh \
+            "${{ steps.info.outputs.name }}" \
+            "${{ steps.info.outputs.version }}" \
+            "${{ steps.info.outputs.folder }}.zip"
+
+      # "Now on the mod portal" ping to the announcements channel, only after
+      # the portal upload actually succeeds.
+      - name: Post mod-portal release to announcements channel
+        if: ${{ steps.upload.outcome == 'success' && env.DISCORD_ANNOUNCEMENTS_WEBHOOK != '' }}
+        env:
+          RELEASE_VERSION: ${{ steps.info.outputs.version }}
+          MOD_NAME: ${{ steps.info.outputs.name }}
+        run: |
+          PORTAL_URL="https://mods.factorio.com/mod/${MOD_NAME}"
+          PAYLOAD=$(jq -n \
+            --arg title "Open Discord Bridge v${RELEASE_VERSION} is live on the mod portal" \
+            --arg desc  "Install or update the companion mod in-game from the mods menu." \
+            --arg url   "$PORTAL_URL" \
+            '{
+              embeds: [{
+                title:       $title,
+                description: $desc,
+                url:         $url,
+                color:       5763719
+              }]
+            }')
+
+          HTTP_CODE=$(curl -sS \
+            -w "%{http_code}" \
+            -o /tmp/announce_response.txt \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            "$DISCORD_ANNOUNCEMENTS_WEBHOOK")
+          CURL_EXIT=$?
+
+          echo "--- Announcements HTTP status: ${HTTP_CODE} (curl exit ${CURL_EXIT})"
+          cat /tmp/announce_response.txt || true
+          echo ""
+          if [ "$CURL_EXIT" -ne 0 ] || [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "::error::Announcements webhook returned non-success status (${HTTP_CODE})"
+            exit 1
+          fi

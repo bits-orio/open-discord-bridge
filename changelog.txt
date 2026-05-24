@@ -1,0 +1,16 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.1.0
+Date: 2026-05-23
+  Features:
+    - Initial release. Mirrors Factorio chat and events to Discord over RCON, and
+      delivers Discord messages back into the game.
+    - Companion Factorio mod captures vanilla events (chat, join/leave, deaths,
+      rockets, research) and exposes the frozen open-discord-bridge-v1 remote
+      interface so other mods (e.g. multi-team-support, OARC) can push their own
+      events and receive inbound Discord messages.
+    - Standalone Go bridge: configurable Discord->RCON commands (public and
+      admin-only, single- and multi-line), slash commands, player linking
+      (Discord <-> Factorio) with an optional synced role and nickname, and an
+      optional HTTP control API.
+    - Deploys as bare-metal, a container, or a Pterodactyl sidecar; events stream
+      over a local file or SFTP, with RCON used for inbound delivery.

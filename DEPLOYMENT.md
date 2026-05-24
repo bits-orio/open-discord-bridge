@@ -346,19 +346,42 @@ Reference artifacts:
 
 ## 7. Releasing (maintainers)
 
-CI/CD lives in `.github/workflows/` (runs once the repo is on GitHub):
-- **`ci.yml`** — `go vet` + `go test` + `go build` on every push/PR.
-- **`release.yml`** — on a `v*` tag: builds and pushes the bridge and sidecar images to
-  GHCR, and publishes cross-platform binaries (+ the egg) to a GitHub Release.
+`companion-mod/info.json`'s `version` is the single source of truth; the release tag must be
+`v<that version>` (the workflow fails the build if they disagree). The full runbook is the
+**bump-version** skill (`.claude/skills/bump-version.md`); the short version:
 
-Cut a release:
 ```sh
-git tag v0.1.0 && git push origin v0.1.0
+# 1. bump-version skill: bump companion-mod/info.json, add a changelog.txt entry, commit, push
+# 2. cut the release (creates + pushes the tag after sanity checks):
+./tools/release.sh
 ```
+
+CI/CD lives in `.github/workflows/`:
+- **`ci.yml`** — `go vet` + `go test` + `go build` on every push/PR.
+- **`release.yml`** — on a `v*` tag: extracts release notes from `changelog.txt`, then
+  - builds + pushes the bridge and sidecar images to GHCR,
+  - builds cross-platform binaries and the companion-mod zip,
+  - publishes a GitHub Release (notes + binaries + egg + mod zip),
+  - posts the changelog to Discord (`DISCORD_WEBHOOK`),
+  - uploads the companion mod to the Factorio mod portal and pings the announcements
+    channel (`DISCORD_ANNOUNCEMENTS_WEBHOOK`).
+- **`mod-portal-upload.yml`** — manual (workflow_dispatch) retry of just the portal upload;
+  idempotent.
+
 Publishes:
 - `ghcr.io/<owner>/open-discord-bridge:{latest,v0.1.0}` — bridge
 - `ghcr.io/<owner>/open-discord-bridge-sidecar:{latest,v0.1.0}` — Factorio + bridge
-- binaries `odb-bridge-<os>-<arch>` (linux/amd64, linux/arm64, windows/amd64, darwin/arm64)
+- binaries `odb-bridge-<os>-<arch>` / `odb-wizard-<os>-<arch>` (linux/amd64, linux/arm64,
+  windows/amd64, darwin/arm64), `deploy/pterodactyl-egg.json`, and
+  `open-discord-bridge_<version>.zip` (the companion mod)
+
+**Optional integrations** (each step is skipped if its repo secret is unset, so the GitHub
+release + GHCR images always publish):
+- `DISCORD_WEBHOOK` — changelog channel post.
+- `DISCORD_ANNOUNCEMENTS_WEBHOOK` — "live on the mod portal" post.
+- `FACTORIO_API_KEY` (scope: *ModPortal: Upload Mods*) — companion-mod portal upload. The
+  upload API adds a release to an **existing** mod page, so create the `open-discord-bridge`
+  page on mods.factorio.com once before the first portal upload.
 
 After the first publish, **make the GHCR package public** (GitHub → Packages → settings) so
 hosts/panels can pull without auth. Ensure `deploy/pterodactyl-egg.json`'s `docker_images`
