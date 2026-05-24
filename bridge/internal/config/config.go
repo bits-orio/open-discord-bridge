@@ -71,7 +71,7 @@ type DiscordConfig struct {
 	TokenEnv       string      `yaml:"token_env"`
 	Token          string      `yaml:"-"` // resolved from env at load time
 	GuildID        string      `yaml:"guild_id"`
-	Embed          bool        `yaml:"embed"`           // render outbound events as colored embeds
+	Embed          bool        `yaml:"embed"`           // color integrator-event category labels via an ANSI code block
 	AnnounceStatus bool        `yaml:"announce_status"` // post bridge.established/disconnected to Discord
 	LinkedRoleID   string      `yaml:"linked_role_id"`  // role kept in sync with linked players
 	LinkedNickname string      `yaml:"linked_nickname"` // nickname format for linked members ({factorio}/{discord})

@@ -58,24 +58,36 @@ needs a live Factorio server + Discord), so this is the manual checklist. Tick a
 - [ ] **Linked nickname** (set `discord.linked_nickname`, bot has Manage Nicknames): the
       user's nickname becomes the format (e.g. `name | FactorioPlayer`); cleared on unlink
 
-## 6. Embeds (optional)
-- [ ] Set `discord.embed: true` (or `ODB_EMBED=true`), restart → events render as colored
-      embeds (vanilla: join green, death red, rocket blue, …)
-- [ ] Each non-vanilla event type gets its own **stable, distinct** color — e.g.
-      `mts.team_created` vs `mts.team_released` differ, and the same key is the same color
-      every time (deterministic from the key, no per-mod hardcoding)
-- [ ] **Chat stays plain text** even with embeds on — `vanilla.chat` (and any
-      `<namespace>.chat`) is not embedded; team/milestone events still embed
+## 6. Category label colors (optional)
+- [ ] Set `discord.embed: true` (or `ODB_EMBED=true`), restart → **integrator** events
+      (mts.*, oarc.*, …) render in an ANSI code block with just the `[ns → event]` label
+      colored; the rest of the line is default. So all `mts.research_finished` lines share
+      a color, distinct from `mts.team_created`, etc.
+- [ ] The label color is **stable** per event key (deterministic, no per-mod hardcoding);
+      palette is 6 ANSI colors, so distinct keys generally differ but can collide
+- [ ] **Vanilla/bridge events and chat stay plain text** (no code block) — they already
+      have distinctive emoji; only namespaced integrator events get the colored label
+- [ ] Note: ANSI lines are **monospace code-block cards** and may show **uncolored** on some
+      mobile/older clients; markdown (`**bold**`) does **not** render inside the block
 
 ## 7. MTS integration (run with multi-team-support loaded)
-- [ ] Claim a team → `[mts → team created]` / `[mts → player joined team]` in Discord
+- [ ] Claim a team → `[mts → team created]` in Discord
 - [ ] Produce first science → `[mts → milestone first] <team> was the first to …`
 - [ ] **Research is team-aware:** completing a tech posts `<team> researched <tech>` (from
       MTS), and you do **not** also get a plain team-less `Research complete:` line (MTS
       disables the baseline research event)
-- [ ] **Embed styling:** with `embed: true`, mts.* events render as a **single line**
-      (`[mts → research finished] Team 01 researched …`) distinguished by the embed's
-      left-bar color (stable per event key)
+- [ ] **Join/leave is team-aware:** connecting posts `[mts → player joined] <name> joined
+      the game — <team>` (no plain `vanilla.player_joined`); disconnecting posts
+      `[mts → player left] <name> left the game — <team>`. A player not on a team omits
+      the `— <team>` suffix
+- [ ] **No duplicate on first claim:** a brand-new player connecting produces exactly one
+      join line (the team-aware connect), **not** also a separate `joined <team>` line
+- [ ] **Mid-game switch:** moving a player between teams (admin move / `/mts-rejoin`) posts
+      a single `[mts → player switched team] <name> switched to <team>` line
+- [ ] **Baseline restored without MTS:** start the server with MTS *unloaded* → plain
+      `vanilla.player_joined` / `vanilla.player_left` / `Research complete:` return
+- [ ] **Category label color:** with `embed: true`, mts.* events render in an ANSI block
+      with the `[mts → …]` label colored (stable per event key), the rest default
 
 ## 8. Transports
 - [ ] **Local** (default) — events flow as above

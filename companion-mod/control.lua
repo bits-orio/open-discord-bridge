@@ -116,9 +116,11 @@ remote.add_interface(INTERFACE, {
   end,
 
   -- Declare an event catalog so the bridge / control plane can offer routable
-  -- toggles without hardcoding any mod. Call once at init.
+  -- toggles without hardcoding any mod. ensure_storage() guards against an integrator
+  -- calling in before our own on_init has run (mod load order is not guaranteed).
   register_source = function(args)
     if type(args) ~= "table" or type(args.namespace) ~= "string" then return end
+    ensure_storage()
     storage.odb.sources[args.namespace] = args.events or {}
   end,
 
@@ -126,7 +128,7 @@ remote.add_interface(INTERFACE, {
   -- can announce it itself with richer context. { event = "research_finished", enabled = false }
   set_baseline = function(args)
     if type(args) ~= "table" or type(args.event) ~= "string" then return end
-    storage.odb.baseline_disabled = storage.odb.baseline_disabled or {}
+    ensure_storage()
     if args.enabled == false then
       storage.odb.baseline_disabled[args.event] = true
     else

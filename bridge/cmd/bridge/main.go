@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log"
-	"math"
 	"net/http"
 	"os/signal"
 	"regexp"
@@ -105,18 +104,16 @@ func main() {
 		log.Printf("bridge: companion mod not reachable over RCON yet (will retry on demand)")
 	}
 
-	// Route an event to its channel and post it. In embed mode everything is a colored
-	// embed except chat (kept as plain text, since chat-as-embeds reads poorly).
+	// Route an event to its channel and post it. With decoration on, integrator events
+	// (mts.*, …) render in an ANSI code block with their "[ns → event]" category label
+	// colored (deterministically per key) so categories are visually distinct; the rest of
+	// the line stays default. Vanilla/bridge events and chat are always plain text.
 	emit := func(ev Event) {
 		channel, ok := rt.Channel(ev.Event)
 		if !ok {
 			return
 		}
-		if cfg.Discord.Embed && !isChatEvent(ev.Event) {
-			dc.SendEmbed(channel, formatEvent(ev), eventColor(ev.Event))
-		} else {
-			dc.Send(channel, formatEvent(ev))
-		}
+		dc.Send(channel, renderEvent(ev, cfg.Discord.Embed))
 	}
 
 	// Startup permission preflight: warn (logs + Discord, with fix steps) about anything
@@ -124,7 +121,7 @@ func main() {
 	go func() {
 		rep := dc.CheckPermissions(discord.PermissionCheck{
 			GuildID:     cfg.Discord.GuildID,
-			NeedEmbed:   cfg.Discord.Embed,
+			ChannelIDs:  rt.InboundChannels(), // distinct channels the bridge posts to
 			NeedRoles:   cfg.Discord.LinkedRoleID != "",
 			NeedNicks:   cfg.Discord.LinkedNickname != "",
 			RoleAboveID: cfg.Discord.LinkedRoleID,
@@ -134,6 +131,8 @@ func main() {
 			return
 		}
 		if rep.OK() {
+			log.Printf("bridge: Discord permission preflight passed (checked channels: %s)",
+				strings.Join(rt.InboundChannels(), ", "))
 			return
 		}
 		if len(rep.Missing) > 0 {
@@ -142,9 +141,10 @@ func main() {
 		if rep.Hierarchy {
 			log.Printf("bridge: bot's role is not above the linked role")
 		}
-		// Plain text (not an embed) so it posts even if Embed Links is the missing perm.
 		if ch, ok := rt.Channel("bridge.warning"); ok {
 			dc.Send(ch, permissionHelp(rep))
+		} else {
+			log.Printf("bridge: no route matches \"bridge.warning\" — warning logged only, not posted to Discord")
 		}
 	}()
 
@@ -332,6 +332,10 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
+	// Discord forbids bots from changing the guild owner's nickname (even with Manage
+	// Nicknames), so we skip the nickname step for them — their linked role still applies.
+	ownerID, _ := dc.GuildOwnerID(guildID)
+
 	seen := map[string]bool{}
 	reconcile := func() {
 		links, ok := queryLinks(rc)
@@ -355,7 +359,9 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 				}
 			}
 			if nickFormat != "" {
-				if err := dc.SetNickname(guildID, id, nickFor(nickFormat, l)); err != nil {
+				if id == ownerID {
+					log.Printf("linked-member: not setting nickname for %s — they are the server owner (Discord forbids bots renaming the owner); their linked role still applies", id)
+				} else if err := dc.SetNickname(guildID, id, nickFor(nickFormat, l)); err != nil {
 					log.Printf("linked-member: set nickname for %s failed: %v", id, err)
 				}
 			}
@@ -371,8 +377,8 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 					continue // keep, retry next poll
 				}
 			}
-			if nickFormat != "" {
-				_ = dc.SetNickname(guildID, id, "") // clear
+			if nickFormat != "" && id != ownerID {
+				_ = dc.SetNickname(guildID, id, "") // clear (owner's was never set)
 			}
 			delete(seen, id)
 		}
@@ -553,12 +559,15 @@ func formatEvent(ev Event) string {
 }
 
 // formatGeneric renders a non-baseline event (mts.*, oarc.*, custom.*, ...) for plain-text
-// mode: a humanized "[namespace → event]" label plus the body.
+// mode: a humanized "[namespace → event]" label (bolded — bold is emoji-safe, so an
+// integrator can put an emoji in the label, unlike inline-code which renders :shortcodes:
+// literally) plus the integrator's body. The ANSI-decorated path builds its own label.
 func formatGeneric(eventKey string, data map[string]any) string {
+	label := "**" + humanizeKey(eventKey, firstString(data, "label")) + "**"
 	if body := genericBody(data); body != "" {
-		return humanizeKey(eventKey) + " " + body
+		return label + " " + body
 	}
-	return humanizeKey(eventKey)
+	return label
 }
 
 // genericBody is an event's human text: the integrator-supplied "text"/"message", else a
@@ -570,17 +579,28 @@ func genericBody(data map[string]any) string {
 	return kvSummary(data)
 }
 
-// eventLabel turns "mts.team_created" into "mts → team created" (no brackets).
-func eventLabel(eventKey string) string {
+// eventLabel turns "mts.team_created" into "mts → team created" (no brackets). An integrator
+// may override the event-name portion (right of the arrow) by supplying a "label" in the
+// event data — e.g. label "🔬" yields "mts → 🔬" — while the bridge keeps the namespace so
+// attribution stays consistent. Use a literal unicode/custom emoji; bare :shortcodes: don't
+// render from a bot.
+func eventLabel(eventKey, override string) string {
 	ns, name, found := strings.Cut(eventKey, ".")
 	if !found {
+		if override != "" {
+			return override
+		}
 		return strings.ReplaceAll(ns, "_", " ")
 	}
-	return fmt.Sprintf("%s → %s", ns, strings.ReplaceAll(name, "_", " "))
+	if override == "" {
+		override = strings.ReplaceAll(name, "_", " ")
+	}
+	return fmt.Sprintf("%s → %s", ns, override)
 }
 
-// humanizeKey is the bracketed label for plain text, e.g. "[mts → team created]".
-func humanizeKey(eventKey string) string { return "[" + eventLabel(eventKey) + "]" }
+// humanizeKey is the bracketed label for plain text, e.g. "[mts → team created]". override
+// (the integrator-supplied "label", may be "") replaces the event-name portion.
+func humanizeKey(eventKey, override string) string { return "[" + eventLabel(eventKey, override) + "]" }
 
 func firstString(data map[string]any, keys ...string) string {
 	for _, k := range keys {
@@ -592,11 +612,11 @@ func firstString(data map[string]any, keys ...string) string {
 }
 
 // kvSummary is the fallback when an event carries no "text": sorted key=value pairs,
-// skipping the "text"/"message" keys themselves.
+// skipping the "text"/"message"/"label" presentation keys themselves.
 func kvSummary(data map[string]any) string {
 	keys := make([]string, 0, len(data))
 	for k := range data {
-		if k == "text" || k == "message" {
+		if k == "text" || k == "message" || k == "label" {
 			continue
 		}
 		keys = append(keys, k)
@@ -726,73 +746,53 @@ func permissionHelp(rep discord.PermissionReport) string {
 }
 
 // isChatEvent reports whether an event is chat — the interface convention is that any
-// event keyed "chat" or "<namespace>.chat" is chat. Such events render as plain text even
-// in embed mode, so integrators can mark chat-style relay (e.g. "mts.chat") vs notable
-// events (e.g. "mts.team_created", which embed) purely by how they name the event.
+// event keyed "chat" or "<namespace>.chat" is chat. Such events never get a category
+// square, so integrators can mark chat-style relay (e.g. "mts.chat") vs notable events
+// (e.g. "mts.team_created", which gets a square) purely by how they name the event.
 func isChatEvent(eventKey string) bool {
 	return eventKey == "chat" || strings.HasSuffix(eventKey, ".chat")
 }
 
-// eventColor maps an event key to an embed color (used when discord.embed is on).
-func eventColor(eventKey string) int {
-	switch eventKey {
-	case "vanilla.chat":
-		return 0x5865F2 // blurple
-	case "vanilla.player_joined":
-		return 0x57F287 // green
-	case "vanilla.player_left":
-		return 0x99AAB5 // grey
-	case "vanilla.player_died":
-		return 0xED4245 // red
-	case "vanilla.rocket_launched":
-		return 0x3498DB // blue
-	case "vanilla.research_finished":
-		return 0x9B59B6 // purple
-	case "vanilla.game_started":
-		return 0x1ABC9C // teal
-	case "bridge.established":
-		return 0x57F287 // green
-	case "bridge.disconnected":
-		return 0xED4245 // red
+// renderEvent produces the Discord text for an event. With decoration off (or for
+// vanilla/bridge/chat events) it's the plain-text formatEvent line. With decoration on,
+// integrator events (those carrying a "[ns → event]" label, e.g. mts.*) render inside an
+// ANSI code block with just the category label colored — deterministically per key — so all
+// events of one type share a color and differ from other types. The body stays default
+// (note: Discord markdown like **bold** does not render inside an ANSI code block).
+func renderEvent(ev Event, decorate bool) string {
+	if !decorate || isChatEvent(ev.Event) || !isGenericEvent(ev.Event) {
+		return formatEvent(ev)
+	}
+	line := ansiColor(ev.Event) + humanizeKey(ev.Event, firstString(ev.Data, "label")) + ansiReset
+	if body := genericBody(ev.Data); body != "" {
+		line += " " + body
+	}
+	return "```ansi\n" + line + "\n```"
+}
+
+// isGenericEvent reports whether an event is an integrator event (carries a namespaced
+// "[ns → event]" label), as opposed to the bridge's own vanilla.*/bridge.* events.
+func isGenericEvent(eventKey string) bool {
+	switch ns, _, _ := strings.Cut(eventKey, "."); ns {
+	case "vanilla", "bridge":
+		return false
 	default:
-		// Any other event (mts.*, oarc.*, custom.*) gets a stable, distinct color
-		// derived from its key — no per-mod hardcoding, but each event type looks
-		// intentionally colored and consistent.
-		return hashColor(eventKey)
+		return true
 	}
 }
 
-// hashColor maps a string to a stable, pleasant color: the key's hash picks a hue, with
-// fixed saturation/lightness so every event type is distinct yet vibrant.
-func hashColor(s string) int {
+const ansiReset = "[0m"
+
+// ansiPalette holds Discord-supported ANSI SGR color codes (foreground 31–36), used bold
+// (1;) so labels stand out. Category labels hash into this palette.
+var ansiPalette = []int{31, 32, 33, 34, 35, 36} // red, green, yellow, blue, magenta, cyan
+
+// ansiColor returns the bold ANSI escape that colors an event's category label, picked
+// deterministically from the event key (so a given event type is always the same color).
+func ansiColor(eventKey string) string {
 	h := fnv.New32a()
-	_, _ = h.Write([]byte(s))
-	hue := float64(h.Sum32() % 360)
-	r, g, b := hslToRGB(hue, 0.65, 0.55)
-	return r<<16 | g<<8 | b
-}
-
-func hslToRGB(h, s, l float64) (int, int, int) {
-	c := (1 - math.Abs(2*l-1)) * s
-	hp := h / 60
-	x := c * (1 - math.Abs(math.Mod(hp, 2)-1))
-	var r, g, b float64
-	switch {
-	case hp < 1:
-		r, g, b = c, x, 0
-	case hp < 2:
-		r, g, b = x, c, 0
-	case hp < 3:
-		r, g, b = 0, c, x
-	case hp < 4:
-		r, g, b = 0, x, c
-	case hp < 5:
-		r, g, b = x, 0, c
-	default:
-		r, g, b = c, 0, x
-	}
-	m := l - c/2
-	return int((r+m)*255 + 0.5), int((g+m)*255 + 0.5), int((b+m)*255 + 0.5)
+	_, _ = h.Write([]byte(eventKey))
+	return fmt.Sprintf("[1;%dm", ansiPalette[h.Sum32()%uint32(len(ansiPalette))])
 }
 
 // firstWord returns the first whitespace-separated token of s ("" if none).

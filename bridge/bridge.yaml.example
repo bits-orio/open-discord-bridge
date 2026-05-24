@@ -23,8 +23,9 @@ poll_interval: 1s
 discord:
   token_env: DISCORD_BOT_TOKEN
   guild_id: "000000000000000000"
-  embed: false              # true = events as colored embeds (chat stays plain text;
-                            # "chat" = any event keyed chat or <namespace>.chat)
+  embed: false              # true = render integrator events (mts.*, …) in an ANSI code
+                            # block with their "[ns → event]" category label colored (stable
+                            # per key). Vanilla/bridge events and chat stay plain text.
   announce_status: true     # true = post "established"/"disconnected" when the bridge's
                             # link to Factorio (RCON + mod handshake) changes. Routed like
                             # any event under "bridge.*" — needs a matching route (e.g. "*").

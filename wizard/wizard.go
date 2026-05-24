@@ -10,11 +10,13 @@ import (
 	"github.com/bwmarrin/discordgo"
 )
 
-// InvitePermissions: View Channels (1024) + Send Messages (2048) + Embed Links (16384) +
-// Read Message History (65536) + Manage Nicknames (134217728) + Manage Roles (268435456)
-// = 402738176. Manage Roles/Nicknames power the linked-player role/nickname feature; if
-// used, the bot's role must sit above the target role.
-const InvitePermissions = "402738176"
+// InvitePermissions: View Channels (1024) + Send Messages (2048) + Read Message History
+// (65536) + Manage Nicknames (134217728) + Manage Roles (268435456) = 402721792. Manage
+// Roles/Nicknames power the linked-player role/nickname feature; if used, the bot's role
+// must sit above the target role. (No Embed Links — events are plain text. No Use External
+// Emoji — custom emoji in labels must live on a server the bot is in, e.g. yours; that
+// needs no permission, and emoji from other servers won't render regardless.)
+const InvitePermissions = "402721792"
 
 // Bot is a validated Discord bot connection (REST only — no gateway).
 type Bot struct {

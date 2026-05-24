@@ -189,10 +189,10 @@ func (c *Client) Send(channelID, content string) {
 // PermissionCheck describes what the bridge needs the bot to be able to do.
 type PermissionCheck struct {
 	GuildID     string
-	NeedEmbed   bool
-	NeedRoles   bool   // Manage Roles (linked_role_id)
-	NeedNicks   bool   // Manage Nicknames (linked_nickname)
-	RoleAboveID string // bot's top role must outrank this role (the linked role)
+	ChannelIDs  []string // channels the bridge posts to; messaging perms are checked here (honors per-channel overwrites)
+	NeedRoles   bool     // Manage Roles (linked_role_id)
+	NeedNicks   bool     // Manage Nicknames (linked_nickname)
+	RoleAboveID string   // bot's top role must outrank this role (the linked role)
 }
 
 // PermissionReport is the result of a permission preflight.
@@ -255,12 +255,57 @@ func (c *Client) CheckPermissions(pc PermissionCheck) PermissionReport {
 			rep.Missing = append(rep.Missing, name)
 		}
 	}
-	need(discordgo.PermissionViewChannel, "View Channels")
-	need(discordgo.PermissionSendMessages, "Send Messages")
-	need(discordgo.PermissionReadMessageHistory, "Read Message History")
-	if pc.NeedEmbed {
-		need(discordgo.PermissionEmbedLinks, "Embed Links")
+
+	// Messaging permissions can be flipped by per-channel overwrites, so check them against
+	// the bot's *effective* perms in each channel the bridge posts to — not just the
+	// guild/role defaults. (Manage Roles/Nicknames are guild-level, so they use `need`.)
+	roleSet := make(map[string]bool, len(member.Roles))
+	for _, rid := range member.Roles {
+		roleSet[rid] = true
 	}
+	effective := func(ch *discordgo.Channel) int64 {
+		p := perms
+		var eA, eD, rA, rD, mA, mD int64
+		for _, o := range ch.PermissionOverwrites {
+			switch o.Type {
+			case discordgo.PermissionOverwriteTypeRole:
+				if o.ID == pc.GuildID { // @everyone
+					eA, eD = eA|o.Allow, eD|o.Deny
+				} else if roleSet[o.ID] {
+					rA, rD = rA|o.Allow, rD|o.Deny
+				}
+			case discordgo.PermissionOverwriteTypeMember:
+				if o.ID == botID {
+					mA, mD = mA|o.Allow, mD|o.Deny
+				}
+			}
+		}
+		p = (p &^ eD) | eA // @everyone overwrite
+		p = (p &^ rD) | rA // bot's role overwrites
+		p = (p &^ mD) | mA // bot member overwrite
+		return p
+	}
+	var channels []*discordgo.Channel
+	for _, id := range pc.ChannelIDs {
+		if ch, err := c.session.Channel(id); err == nil {
+			channels = append(channels, ch)
+		}
+	}
+	needMsg := func(bit int64, name string) {
+		if len(channels) == 0 {
+			need(bit, name)
+			return
+		}
+		for _, ch := range channels {
+			if effective(ch)&bit == 0 {
+				rep.Missing = append(rep.Missing, name)
+				return
+			}
+		}
+	}
+	needMsg(discordgo.PermissionViewChannel, "View Channels")
+	needMsg(discordgo.PermissionSendMessages, "Send Messages")
+	needMsg(discordgo.PermissionReadMessageHistory, "Read Message History")
 	if pc.NeedRoles {
 		need(discordgo.PermissionManageRoles, "Manage Roles")
 		if r := byID[pc.RoleAboveID]; r != nil && botTop <= r.Position {
@@ -271,6 +316,16 @@ func (c *Client) CheckPermissions(pc PermissionCheck) PermissionReport {
 		need(discordgo.PermissionManageNicknames, "Manage Nicknames")
 	}
 	return rep
+}
+
+// GuildOwnerID returns the guild owner's user ID. Used to skip the owner for actions
+// Discord forbids on them regardless of permission (e.g. setting their nickname).
+func (c *Client) GuildOwnerID(guildID string) (string, error) {
+	g, err := c.session.Guild(guildID)
+	if err != nil {
+		return "", err
+	}
+	return g.OwnerID, nil
 }
 
 // AddRole / RemoveRole manage a guild role on a member (used to mark linked players).
@@ -287,17 +342,6 @@ func (c *Client) RemoveRole(guildID, userID, roleID string) error {
 // a role above the member; can't change the guild owner.
 func (c *Client) SetNickname(guildID, userID, nick string) error {
 	return c.session.GuildMemberNickname(guildID, userID, nick)
-}
-
-// SendEmbed posts an event as a single-line colored embed (the color is the left bar).
-func (c *Client) SendEmbed(channelID, description string, color int) {
-	_, err := c.session.ChannelMessageSendEmbed(channelID, &discordgo.MessageEmbed{
-		Description: description,
-		Color:       color,
-	})
-	if err != nil {
-		fmt.Printf("discord: embed send to %s failed: %v\n", channelID, err)
-	}
 }
 
 // GuildInfo / ChannelInfo are lightweight projections for the Control API proxy.

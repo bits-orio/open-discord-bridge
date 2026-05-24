@@ -21,12 +21,6 @@ func TestIsChatEvent(t *testing.T) {
 }
 
 func TestBridgeStatusFormatting(t *testing.T) {
-	if eventColor("bridge.established") != 0x57F287 {
-		t.Error("established should be green")
-	}
-	if eventColor("bridge.disconnected") != 0xED4245 {
-		t.Error("disconnected should be red")
-	}
 	got := formatEvent(Event{Event: "bridge.established", Data: map[string]any{"version": "0.1.0"}})
 	if !strings.Contains(got, "established") || !strings.Contains(got, "0.1.0") {
 		t.Errorf("established message wrong: %q", got)
@@ -40,9 +34,29 @@ func TestHumanizeKey(t *testing.T) {
 		"custom":                 "[custom]",
 	}
 	for in, want := range cases {
-		if got := humanizeKey(in); got != want {
+		if got := humanizeKey(in, ""); got != want {
 			t.Errorf("humanizeKey(%q) = %q; want %q", in, got, want)
 		}
+	}
+}
+
+func TestLabelOverride(t *testing.T) {
+	// An integrator-supplied "label" replaces the event-name portion; namespace stays.
+	if got := humanizeKey("mts.research_finished", "🔬"); got != "[mts → 🔬]" {
+		t.Errorf("override label = %q; want [mts → 🔬]", got)
+	}
+	// And it flows through plain-mode rendering.
+	got := formatGeneric("mts.research_finished", map[string]any{
+		"label": "🔬",
+		"text":  "Team 01 researched `epic-quality`",
+	})
+	want := "**[mts → 🔬]** Team 01 researched `epic-quality`"
+	if got != want {
+		t.Errorf("got %q; want %q", got, want)
+	}
+	// "label" is a presentation key, not shown in the kv fallback.
+	if kv := formatGeneric("oarc.spawn", map[string]any{"label": "🌲", "x": float64(5)}); kv != "**[oarc → 🌲]** x=5" {
+		t.Errorf("kv fallback leaked label: %q", kv)
 	}
 }
 
@@ -53,7 +67,7 @@ func TestFormatGenericPrefersText(t *testing.T) {
 		"team":       "Team 01",
 		"text":       "bits-orio joined Team 01",
 	})
-	want := "[mts → player joined team] bits-orio joined Team 01"
+	want := "**[mts → player joined team]** bits-orio joined Team 01"
 	if got != want {
 		t.Errorf("got %q; want %q", got, want)
 	}
@@ -75,30 +89,56 @@ func TestFirstWord(t *testing.T) {
 	}
 }
 
-func TestEventColor(t *testing.T) {
-	if eventColor("vanilla.player_died") != 0xED4245 {
-		t.Error("death should keep its intentional red")
-	}
-	// Non-vanilla events get a stable, distinct color per key (no hardcoding).
-	if eventColor("mts.team_created") != eventColor("mts.team_created") {
-		t.Error("color must be deterministic for a given key")
-	}
-	seen := map[int]bool{}
-	for _, k := range []string{"mts.team_created", "mts.team_released", "oarc.spawn", "custom.x"} {
-		c := eventColor(k)
-		if c < 0 || c > 0xFFFFFF {
-			t.Errorf("color out of range for %q: %#x", k, c)
+func TestIsGenericEvent(t *testing.T) {
+	for _, k := range []string{"mts.research_finished", "oarc.spawn", "custom.x"} {
+		if !isGenericEvent(k) {
+			t.Errorf("%q should be generic", k)
 		}
-		seen[c] = true
 	}
-	if len(seen) < 2 {
-		t.Error("distinct event keys should map to distinct colors")
+	for _, k := range []string{"vanilla.player_died", "bridge.established"} {
+		if isGenericEvent(k) {
+			t.Errorf("%q should NOT be generic", k)
+		}
+	}
+}
+
+func TestRenderEvent(t *testing.T) {
+	ev := Event{Event: "mts.research_finished", Data: map[string]any{"text": "Team 01 researched steel-processing"}}
+
+	// Decoration off → plain text line, no code block.
+	plain := renderEvent(ev, false)
+	if strings.Contains(plain, "```") || strings.Contains(plain, "\x1b") {
+		t.Errorf("undecorated should be plain: %q", plain)
+	}
+	if !strings.Contains(plain, "[mts → research finished]") {
+		t.Errorf("undecorated missing label: %q", plain)
+	}
+
+	// Decoration on → ANSI code block; only the label is wrapped in color codes.
+	dec := renderEvent(ev, true)
+	if !strings.HasPrefix(dec, "```ansi\n") || !strings.HasSuffix(dec, "\n```") {
+		t.Errorf("decorated should be an ansi block: %q", dec)
+	}
+	if !strings.Contains(dec, ansiColor(ev.Event)+"[mts → research finished]"+ansiReset) {
+		t.Errorf("label should be ansi-colored: %q", dec)
+	}
+	if !strings.Contains(dec, "Team 01 researched steel-processing") {
+		t.Errorf("body missing: %q", dec)
+	}
+
+	// Color is deterministic per key, and varies across keys.
+	if ansiColor("mts.research_finished") != ansiColor("mts.research_finished") {
+		t.Error("ansi color must be deterministic")
+	}
+	// Vanilla stays plain even with decoration on.
+	if v := renderEvent(Event{Event: "vanilla.player_died", Data: map[string]any{"player": "Bob"}}, true); strings.Contains(v, "```") {
+		t.Errorf("vanilla should stay plain: %q", v)
 	}
 }
 
 func TestFormatGenericFallsBackToKV(t *testing.T) {
 	got := formatGeneric("oarc.spawn", map[string]any{"player": "bob", "x": float64(5)})
-	want := "[oarc → spawn] player=bob, x=5"
+	want := "**[oarc → spawn]** player=bob, x=5"
 	if got != want {
 		t.Errorf("got %q; want %q", got, want)
 	}

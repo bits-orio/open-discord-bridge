@@ -90,7 +90,7 @@ If you DON'T have a bot yet:
   4. Click "Reset Token", confirm, and copy the token -> this goes in bridge/.env.
   5. Invite it to your server: left sidebar -> "OAuth2" -> "URL Generator":
        - Scopes:       bot, applications.commands   (applications.commands = slash commands)
-       - Bot perms:    View Channels, Send Messages, Embed Links, Read Message History,
+       - Bot perms:    View Channels, Send Messages, Read Message History,
                        Manage Roles, Manage Nicknames
                        (Manage Roles/Nicknames are for marking linked players; if you use
                         them, also drag the bot's role ABOVE the "linked" role.)

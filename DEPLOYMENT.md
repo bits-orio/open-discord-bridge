@@ -56,7 +56,7 @@ env vars and no file is mounted.
 | `ODB_REQUIRED_MOD_VERSION` | Minimum mod version (surfaced in `/v1/status`) | — |
 | `DISCORD_BOT_TOKEN` | Discord bot token (**secret**) | — (required) |
 | `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
-| `ODB_EMBED` | Render events as colored embeds (except chat — see below) | `false` |
+| `ODB_EMBED` | Color integrator-event category labels via an ANSI code block (see below) | `false` |
 | `ODB_ANNOUNCE_STATUS` | Post bridge↔Factorio connect/disconnect to Discord | `false` |
 | `ODB_LINKED_ROLE_ID` | Discord role assigned to linked players | — |
 | `ODB_LINKED_NICKNAME` | Nickname format for linked members (`{factorio}`/`{discord}`) | — |
@@ -77,10 +77,13 @@ env vars and no file is mounted.
 Provide routes via **either** `ODB_DISCORD_CHANNEL_ID` (simple, one channel) **or**
 `ODB_ROUTES` (e.g. `vanilla.chat=111,mts.*=222,*=111`).
 
-**Embeds:** with `embed: true` (`ODB_EMBED`), events render as colored embeds — **except
-chat**, which stays plain text. "Chat" is any event keyed `chat` or `<namespace>.chat`, so
-an integrator marks a relay as chat (plain) vs a notable event (embed) just by naming it
-(`mts.chat` → plain; `mts.team_created` → embed).
+**Category label colors:** with `embed: true` (`ODB_EMBED`), integrator events (`mts.*`,
+`oarc.*`, …) render in an ANSI code block with just their `[ns → event]` category label
+colored (deterministic per key), so all events of one type share a color and differ from
+other types. Vanilla/bridge events and chat stay plain text. No Embed Links permission is
+needed. Caveats: ANSI lines are monospace code-block cards, may show uncolored on some
+mobile/older clients, and Discord markdown (`**bold**`) does not render inside them.
+"Chat" is any event keyed `chat` or `<namespace>.chat` (`mts.chat` → plain).
 
 ### Which setup path? (also pick one)
 
@@ -306,9 +309,9 @@ Reference artifacts:
 - **Restart:** `POST /v1/restart` performs a clean exit; a supervisor (systemd
   `Restart=always`, Docker/Pterodactyl restart policy) brings it back with fresh config.
 - **Permission preflight:** on connect, the bridge checks its Discord permissions for the
-  configured features (Send/View/Read; Embed Links if embeds; Manage Roles + role hierarchy
-  and Manage Nicknames if linked role/nickname) and warns about anything missing — in the
-  logs and as a one-off message to the bridged channel.
+  configured features (Send/View/Read in each bridged channel, honoring channel overrides;
+  Manage Roles + role hierarchy and Manage Nicknames if linked role/nickname) and warns
+  about anything missing — in the logs and as a one-off message to the bridged channel.
 - **Connection announcements:** with `discord.announce_status` (or `ODB_ANNOUNCE_STATUS`),
   the bridge polls the RCON+mod handshake every ~15s and posts `bridge.established` /
   `bridge.disconnected` to Discord when the link to Factorio comes up or drops. They route

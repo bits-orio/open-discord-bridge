@@ -46,8 +46,8 @@ A successful start logs `connected to Discord; tailing <events_file>`.
 1. **Discord bot:** create an application at <https://discord.com/developers/applications>,
    add a bot, enable the **Message Content Intent**, copy the token into `.env`. Invite it
    with scopes `bot` + `applications.commands`, and permissions View Channels, Send
-   Messages, Embed Links, Read Message History, and (for marking linked players) Manage
-   Roles + Manage Nicknames.
+   Messages, Read Message History, and (for marking linked players) Manage Roles + Manage
+   Nicknames.
 2. **Factorio server:** install the companion mod (see
    [../companion-mod/README.md](../companion-mod/README.md)) and launch headless with RCON:
    ```

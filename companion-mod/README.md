@@ -32,9 +32,26 @@ Always guard calls so the bridge stays an *optional* dependency of your mod:
 ```lua
 if remote.interfaces["open-discord-bridge-v1"] then
   -- Push an outbound event (namespace the key by your mod).
+  --   text   — the human sentence the bridge shows (falls back to a key=value summary).
+  --            You can use Discord markdown (**bold**, `code`, …) — but it won't render
+  --            inside the embed-mode ANSI block.
+  --   label  — optional: overrides the event-name in the bridge's "[ns → …]" tag, e.g.
+  --            label="🔬" renders "[mts → 🔬]".
+  --
+  -- Emoji in `label` (and `text`) — read this, custom emoji are fussy:
+  --   • A bare :shortcode: (e.g. ":lab:") will NOT render from a bot — it shows literally.
+  --   • Unicode emoji (🔬, 🚀, …) always work, everywhere, with no setup.
+  --   • A CUSTOM server emoji must be written in its raw form <:name:id> AND must live on a
+  --     server the bot is a member of (typically your own). Emoji from a server the bot is
+  --     NOT in (e.g. the official Factorio server's :lab:) will NOT render — Discord shows
+  --     ":lab:". No bot permission enables that; it's server membership, not a permission.
+  --   • Same-server custom emoji need NO special permission (not even Use External Emoji).
+  --   • To get the raw <:name:id>: in any Discord channel type a backslash first — "\:lab:"
+  --     — and send it; Discord posts "<:lab:123456789>". Copy that as the label value.
   remote.call("open-discord-bridge-v1", "emit", {
     event = "mts.team_milestone",
-    data  = { team = "north", milestone = "first_rocket" },
+    data  = { team = "north", milestone = "first_rocket",
+              label = "🚀", text = "north launched its **first rocket**" },
   })
 
   -- Declare your event catalog once at init (lets portals offer routable toggles).
@@ -49,8 +66,9 @@ if remote.interfaces["open-discord-bridge-v1"] then
 end
 
 -- Chat vs notable events: name a chat-style relay event "<namespace>.chat" (e.g.
--- "mts.chat"). The bridge renders any "chat"/"*.chat" event as plain text even when
--- embeds are on, while other events (e.g. "mts.team_created") become colored embeds.
+-- "mts.chat"). The bridge renders any "chat"/"*.chat" event as plain chat text; notable
+-- events (e.g. "mts.team_created") get the bolded "[ns → …]" tag, and with decoration on
+-- (embed:true) that tag is ANSI-colored per event type.
 
 -- Subscribe to inbound Discord messages for context-aware delivery.
 script.on_event(
