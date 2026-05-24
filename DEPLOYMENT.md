@@ -351,14 +351,14 @@ Reference artifacts:
 **bump-version** skill (`.claude/skills/bump-version.md`); the short version:
 
 ```sh
-# 1. bump-version skill: bump companion-mod/info.json, add a changelog.txt entry, commit, push
+# 1. bump-version skill: bump companion-mod/info.json, add a companion-mod/changelog.txt entry, commit, push
 # 2. cut the release (creates + pushes the tag after sanity checks):
 ./tools/release.sh
 ```
 
 CI/CD lives in `.github/workflows/`:
 - **`ci.yml`** — `go vet` + `go test` + `go build` on every push/PR.
-- **`release.yml`** — on a `v*` tag: extracts release notes from `changelog.txt`, then
+- **`release.yml`** — on a `v*` tag: extracts release notes from `companion-mod/changelog.txt`, then
   - builds + pushes the bridge and sidecar images to GHCR,
   - builds cross-platform binaries and the companion-mod zip,
   - publishes a GitHub Release (notes + binaries + egg + mod zip),

@@ -120,7 +120,7 @@ jobs:
               sub(/^  /, "")
               print
             }
-          ' changelog.txt)
+          ' companion-mod/changelog.txt)
 
           if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
             PREV_TAG="${{ steps.prev.outputs.tag }}"
@@ -144,15 +144,15 @@ jobs:
           echo "$NOTES"
           echo "--- End preview ---"
 
-      # Companion Factorio mod zip: <name>_<version>/{info.json,control.lua,…}
-      # plus changelog.txt so the mod portal page shows it.
+      # Companion Factorio mod zip: <name>_<version>/{info.json,control.lua,changelog.txt,…}.
+      # Copy only mod content explicitly — the portal rejects zips containing .sh/.py/etc,
+      # and companion-mod/link-mod.sh must not leak in.
       - name: Build companion mod zip
         run: |
           FOLDER="${{ steps.info.outputs.folder }}"
           mkdir -p "build/${FOLDER}"
-          cp companion-mod/info.json companion-mod/control.lua "build/${FOLDER}/"
+          cp companion-mod/info.json companion-mod/control.lua companion-mod/changelog.txt "build/${FOLDER}/"
           [ -f companion-mod/README.md ] && cp companion-mod/README.md "build/${FOLDER}/"
-          cp changelog.txt "build/${FOLDER}/"
           (cd build && zip -r "../${FOLDER}.zip" "${FOLDER}")
 
       - name: Build cross-platform binaries (bridge + wizard)

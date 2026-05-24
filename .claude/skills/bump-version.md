@@ -21,10 +21,10 @@ This project ships two things under one version: the **Go bridge** (GitHub relea
 
    All must be **correct**: no claim that contradicts current behavior. If a recent commit added a feature, removed a command, or changed the remote interface, update the relevant files. Do not invent or expand claims to features that have not been tested. Show any doc edits to the user for approval before committing.
 
-3. **Generate a changelog entry** at the top of `changelog.txt`:
+3. **Generate a changelog entry** at the top of `companion-mod/changelog.txt` (it lives with the mod so the Factorio portal and the in-game changelog pick it up; the release workflow also extracts GitHub release notes from it):
    - Determine the previous version's git tag (format: `v<old_version>`). If no tag exists, use `git log` to find commits since the last changelog entry.
    - Collect the diff: `git log --pretty=format:"- %s" v<old_version>..HEAD` (exclude "Bump version" commits).
-   - Write a new entry at the **top** of `changelog.txt` following the existing format exactly:
+   - Write a new entry at the **top** of `companion-mod/changelog.txt` following the existing format exactly:
      ```
      ---------------------------------------------------------------------------------------------------
      Version: <new_version>
@@ -45,7 +45,7 @@ This project ships two things under one version: the **Go bridge** (GitHub relea
    ```
    This removes the mod's old symlinks (matching the mod name in `companion-mod/info.json`) and creates new ones with the current version in both `~/factorio/mods/` and `~/.factorio/mods/`.
 
-5. **Commit the version bump**: stage `companion-mod/info.json`, `changelog.txt`, and any doc edits from step 2. Commit with message: `Bump version to <new_version>` (or `Release <new_version>: <one-line summary>` if substantial doc/feature work shipped — match the recent commit history's style).
+5. **Commit the version bump**: stage `companion-mod/info.json`, `companion-mod/changelog.txt`, and any doc edits from step 2. Commit with message: `Bump version to <new_version>` (or `Release <new_version>: <one-line summary>` if substantial doc/feature work shipped — match the recent commit history's style).
 
 6. **Release** (when the user asks): push the bump commit, then run `./tools/release.sh`. The script verifies the changelog entry, creates and pushes `v<new_version>`, and the GitHub Actions workflow takes over (build companion-mod zip + cross-platform binaries → GitHub release → GHCR images → Discord → mod portal upload).
    - The mod-portal upload and Discord posts are **optional** — each step is skipped if its secret is unset, so the GitHub release + GHCR images always publish.

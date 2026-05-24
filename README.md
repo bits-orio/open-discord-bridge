@@ -123,7 +123,7 @@ to inbound Discord messages, and the emoji/markdown rules — is documented in
 
 `companion-mod/info.json`'s `version` is the source of truth; tag `v<version>` to publish.
 Tagging builds the binaries, companion-mod zip, and GHCR images, drafts a GitHub Release
-from `changelog.txt`, announces to Discord, and uploads the companion mod to the Factorio
+from `companion-mod/changelog.txt`, announces to Discord, and uploads the companion mod to the Factorio
 mod portal. See the **bump-version** flow in [DEPLOYMENT.md](DEPLOYMENT.md#7-releasing-maintainers).
 
 ## License

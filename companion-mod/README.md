@@ -1,33 +1,35 @@
 # Open Discord Bridge — Companion Mod
 
-Required Factorio 2.0 mod. It does two things:
+Mirror your Factorio server's chat and events to a Discord channel, and relay Discord
+messages back into the game. Works on a vanilla server, and lets other mods
+(multi-team-support, OARC, …) post their own events too.
 
-1. **Baseline** — captures vanilla events (chat, join/leave, deaths, rockets, research)
-   on its own and writes them as JSONL to
-   `script-output/open-discord-bridge/events.jsonl`. The bridge process tails that file.
-2. **Substrate** — exposes the frozen `open-discord-bridge-v1` remote interface so other
-   mods (MTS, OARC, …) can push their own events and receive inbound Discord messages.
-   The bridge never contains mod-specific code.
+> ### ⚠️ This mod needs a companion program to actually reach Discord.
+> On its own the mod just records events to a file. The piece that connects to Discord is
+> the **Open Discord Bridge** program, which you run alongside your server. Downloads,
+> a one-command installer, a setup wizard, and full instructions for every hosting style
+> (self-host, Docker, or a game-host panel like Pterodactyl) are on GitHub:
+>
+> # → https://github.com/bits-orio/open-discord-bridge
 
-See [../PLAN.md](../PLAN.md) for full design.
+## Setup in three steps
 
-## Install
+1. **Install this mod** (you've done this — or get it from the in-game mod browser).
+2. **Enable RCON** on your server — the bridge uses it to deliver Discord messages in-game.
+   The repo shows exactly how for each hosting style.
+3. **Run the bridge** from [the GitHub repo](https://github.com/bits-orio/open-discord-bridge)
+   and point it at your server. Its setup wizard handles the Discord bot token and channel.
 
-Copy this folder into your Factorio `mods/` directory as `open-discord-bridge_0.1.0`
-(the folder/zip name must be `name_version` from `info.json`):
+Once it's connected you'll see in-game chat appear in Discord and vice versa. Everything
+else — commands, player linking, deployment options — is documented in the repo.
 
-```
-mods/open-discord-bridge_0.1.0/
-  info.json
-  control.lua
-```
+---
 
-Restart the server. On the first tick of a session the mod writes a `vanilla.game_started`
-line, which also creates the events file.
+## For mod authors — integrator API (`open-discord-bridge-v1`)
 
-## Integrator API (`open-discord-bridge-v1`)
-
-Always guard calls so the bridge stays an *optional* dependency of your mod:
+Other mods push their own events into the bridge through a frozen remote interface; the
+bridge itself contains no mod-specific code. Always guard calls so the bridge stays an
+*optional* dependency of your mod:
 
 ```lua
 if remote.interfaces["open-discord-bridge-v1"] then
@@ -77,15 +79,21 @@ script.on_event(
 )
 ```
 
-## JSONL line shape
+### JSONL line shape
+
+The mod writes events to `script-output/open-discord-bridge/events.jsonl`; the bridge tails
+it:
 
 ```json
 {"event":"vanilla.chat","ts":1234,"surface":"nauvis","data":{"player":"Bob","message":"hi"}}
 ```
 
-## Inbound (Discord → game)
+### Inbound (Discord → game)
 
 The bridge delivers Discord messages by running the console command
 `/odb-incoming {"user":"…","message":"…"}` over RCON (achievement-safe — no
 `/silent-command`). The mod parses it, raises `on_incoming` for integrators, and prints a
 default `[Discord] user: message` line to all players.
+
+See the [GitHub repo](https://github.com/bits-orio/open-discord-bridge) for the full design
+and deployment docs.

@@ -9,8 +9,8 @@ cd "$REPO_ROOT"
 
 err() { echo "release.sh: $*" >&2; exit 1; }
 
-[[ -f companion-mod/info.json ]] || err "companion-mod/info.json not found (run from repo root or via tools/release.sh)"
-[[ -f changelog.txt ]]           || err "changelog.txt not found"
+[[ -f companion-mod/info.json ]]    || err "companion-mod/info.json not found (run from repo root or via tools/release.sh)"
+[[ -f companion-mod/changelog.txt ]] || err "companion-mod/changelog.txt not found"
 command -v jq >/dev/null  || err "jq required"
 command -v git >/dev/null || err "git required"
 
@@ -30,8 +30,8 @@ if [[ "$BRANCH" != "master" && "$BRANCH" != "main" ]]; then
 fi
 
 # changelog.txt must contain an entry for this version.
-if ! grep -qE "^Version: ${VERSION//./\\.}\$" changelog.txt; then
-    err "changelog.txt has no 'Version: ${VERSION}' entry — run the bump-version skill first"
+if ! grep -qE "^Version: ${VERSION//./\\.}\$" companion-mod/changelog.txt; then
+    err "companion-mod/changelog.txt has no 'Version: ${VERSION}' entry — run the bump-version skill first"
 fi
 
 # Tag must not already exist locally.
