@@ -52,14 +52,43 @@ func main() {
 	ch := channels[pickIndex(in, "Pick a channel", channelLabels(channels))]
 
 	// 5. Factorio details.
+	transport := strings.ToLower(promptDefault(in, "Transport (local/sftp)", "local"))
+	if transport != "sftp" {
+		transport = "local"
+	}
+
 	rcon := promptDefault(in, "Factorio RCON address", "127.0.0.1:27015")
-	events := promptDefault(in, "Events file path",
-		"${HOME}/factorio/script-output/open-discord-bridge/events.jsonl")
+
+	var (
+		sftpHost, sftpUser, sftpKeyPath, sftpKnownHosts, sftpPassword string
+		eventsLabel, eventsDefault                                    string
+	)
+	if transport == "sftp" {
+		sftpHost = prompt(in, "SFTP host:port (e.g. panel.host:2022)")
+		sftpUser = prompt(in, "SFTP username (e.g. user.serverid)")
+		useKey := strings.ToLower(promptDefault(in, "Use an SSH private key instead of a password? (y/N)", "n"))
+		if useKey == "y" || useKey == "yes" {
+			sftpKeyPath = prompt(in, "Path to private key file")
+		} else {
+			sftpPassword = prompt(in, "SFTP password")
+		}
+		sftpKnownHosts = promptDefault(in, "known_hosts file (blank to skip host-key check)", "")
+		eventsLabel = "Events file path (relative to SFTP root)"
+		eventsDefault = "script-output/open-discord-bridge/events.jsonl"
+	} else {
+		eventsLabel = "Events file path"
+		eventsDefault = "${HOME}/factorio/script-output/open-discord-bridge/events.jsonl"
+	}
+	events := promptDefault(in, eventsLabel, eventsDefault)
 	rconPass := prompt(in, "Factorio RCON password")
 
 	// 6. Write config + env.
 	yamlText, err := wizard.RenderBridgeYAML(wizard.ConfigParams{
-		RconAddress: rcon, EventsFile: events, GuildID: guild.ID, ChannelID: ch.ID,
+		Transport:   transport,
+		RconAddress: rcon, EventsFile: events,
+		GuildID: guild.ID, ChannelID: ch.ID,
+		SFTPHost: sftpHost, SFTPUser: sftpUser,
+		SFTPKeyPath: sftpKeyPath, SFTPKnownHosts: sftpKnownHosts,
 	})
 	if err != nil {
 		fail("render config: %v", err)
@@ -67,7 +96,11 @@ func main() {
 	cfgPath := filepath.Join(*out, "bridge.yaml")
 	envPath := filepath.Join(*out, ".env")
 	writeFile(in, cfgPath, yamlText, 0o644)
-	writeFile(in, envPath, fmt.Sprintf("DISCORD_BOT_TOKEN=%s\nFACTORIO_RCON_PASSWORD=%s\n", token, rconPass), 0o600)
+	envContent := fmt.Sprintf("DISCORD_BOT_TOKEN=%s\nFACTORIO_RCON_PASSWORD=%s\n", token, rconPass)
+	if sftpPassword != "" {
+		envContent += fmt.Sprintf("SFTP_PASSWORD=%s\n", sftpPassword)
+	}
+	writeFile(in, envPath, envContent, 0o600)
 
 	fmt.Printf("\n✓ Wrote %s and %s\n", cfgPath, envPath)
 	fmt.Println("\nNext:")

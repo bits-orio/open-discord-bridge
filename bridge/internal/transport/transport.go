@@ -48,7 +48,8 @@ func (t *Tailer) Run(ctx context.Context, onLine func([]byte)) {
 		case <-ticker.C:
 			sz, err := t.reader.Stat()
 			if err != nil {
-				continue // source not ready (file absent, connection down) — retry next tick
+				log.Printf("transport: stat error (will retry): %v", err)
+				continue
 			}
 			if sz < offset {
 				offset = 0 // truncation: new session

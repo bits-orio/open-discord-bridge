@@ -114,6 +114,7 @@ func main() {
 			return
 		}
 		dc.Send(channel, renderEvent(ev, cfg.Discord.Embed))
+		log.Printf("bridge: forwarded %s → channel %s", ev.Event, channel)
 	}
 
 	// Startup permission preflight: warn (logs + Discord, with fix steps) about anything
