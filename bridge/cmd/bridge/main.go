@@ -114,7 +114,6 @@ func main() {
 			return
 		}
 		dc.Send(channel, renderEvent(ev, cfg.Discord.Embed))
-		log.Printf("bridge: forwarded %s → channel %s", ev.Event, channel)
 	}
 
 	// Startup permission preflight: warn (logs + Discord, with fix steps) about anything
@@ -337,7 +336,7 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 	// Nicknames), so we skip the nickname step for them — their linked role still applies.
 	ownerID, _ := dc.GuildOwnerID(guildID)
 
-	seen := map[string]bool{}
+	seen := map[string]string{} // discord_id → factorio player name
 	reconcile := func() {
 		links, ok := queryLinks(rc)
 		if !ok {
@@ -350,7 +349,7 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 			}
 		}
 		for id, l := range cur { // newly linked → apply
-			if seen[id] {
+			if seen[id] != "" {
 				continue
 			}
 			if roleID != "" {
@@ -358,6 +357,7 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 					log.Printf("linked-member: add role to %s failed: %v", id, err)
 					continue // retry next poll
 				}
+				log.Printf("linked-member: role added — %s linked to %s", l.Player, id)
 			}
 			if nickFormat != "" {
 				if id == ownerID {
@@ -366,9 +366,9 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 					log.Printf("linked-member: set nickname for %s failed: %v", id, err)
 				}
 			}
-			seen[id] = true
+			seen[id] = l.Player
 		}
-		for id := range seen { // newly unlinked → revert
+		for id, player := range seen { // newly unlinked → revert
 			if _, still := cur[id]; still {
 				continue
 			}
@@ -377,6 +377,7 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 					log.Printf("linked-member: remove role from %s failed: %v", id, err)
 					continue // keep, retry next poll
 				}
+				log.Printf("linked-member: role removed — %s unlinked (%s)", player, id)
 			}
 			if nickFormat != "" && id != ownerID {
 				_ = dc.SetNickname(guildID, id, "") // clear (owner's was never set)

@@ -72,7 +72,7 @@ local function handle_incoming(args)
         local p = game.get_player(player_name)
         if p and p.valid then
           local c = p.chat_color
-          name = string.format("[color=%.3f,%.3f,%.3f]%s[/color]", c.r, c.g, c.b, user)
+          name = string.format("[color=%.3f,%.3f,%.3f]%s[/color]", c.r, c.g, c.b, player_name)
         end
         break
       end
