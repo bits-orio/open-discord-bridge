@@ -1,4 +1,9 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.2
+Date: 2026-05-31
+  Changes:
+    - Discord→game chat now shows the Factorio username for linked players instead of their Discord display name.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.1
 Date: 2026-05-24
   Changes:
