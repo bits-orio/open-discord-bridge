@@ -1,4 +1,18 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.3
+Date: 2026-06-03
+  Features:
+    - /odb-link now opens a GUI dialog with the Discord command pre-filled in a
+      textfield for easy copy-paste, replacing the plain chat message.
+    - Discord-initiated linking: typing !link in Discord with no code sends a
+      private DM with /odb-discord-link <code> to run in Factorio. Falls back to
+      an in-channel mention if DMs are disabled.
+    - New /odb-discord-link <code> player command to complete Discord-initiated linking.
+    - Link and unlink actions now post confirmation messages to Discord
+      (odb.link_confirmed, odb.link_removed events).
+    - /odb-status RCON response now includes connected players and active mods
+      (used by the bridge for channel topic status).
+---------------------------------------------------------------------------------------------------
 Version: 0.1.2
 Date: 2026-05-31
   Changes:
