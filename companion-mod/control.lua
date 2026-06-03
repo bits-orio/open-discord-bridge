@@ -88,8 +88,9 @@ end
 local function ensure_storage()
   storage.odb                  = storage.odb or {}
   storage.odb.sources          = storage.odb.sources or {}
-  storage.odb.links            = storage.odb.links or {}   -- player_name -> { discord_id, discord_name }
-  storage.odb.pending          = storage.odb.pending or {} -- link code -> { player, expires }
+  storage.odb.links            = storage.odb.links or {}            -- player_name -> { discord_id, discord_name }
+  storage.odb.pending          = storage.odb.pending or {}          -- game-initiated: link code -> { player, expires }
+  storage.odb.discord_pending  = storage.odb.discord_pending or {}  -- discord-initiated: link code -> { discord_id, discord_name, expires }
   storage.odb.link_counter     = storage.odb.link_counter or 0
   storage.odb.baseline_disabled = storage.odb.baseline_disabled or {} -- vanilla event key -> true
 end
@@ -219,6 +220,30 @@ local function make_link_code(counter)
   return code
 end
 
+local ODB_LINK_FRAME = "odb_link_frame"
+
+local function open_link_gui(player, code)
+  local screen = player.gui.screen
+  if screen[ODB_LINK_FRAME] then screen[ODB_LINK_FRAME].destroy() end
+
+  local frame = screen.add{type = "frame", name = ODB_LINK_FRAME,
+                            caption = "Discord Account Link", direction = "vertical"}
+  frame.auto_center = true
+
+  local content = frame.add{type = "flow", direction = "vertical"}
+  content.style.padding = 8
+  content.style.vertical_spacing = 6
+
+  content.add{type = "label", caption = "Paste this command into Discord:"}
+
+  local tf = content.add{type = "textfield", name = "odb_link_code", text = "!link " .. code}
+  tf.style.width = 220
+
+  content.add{type = "label", caption = "[color=255,165,0]Expires in ~60 seconds.[/color]"}
+
+  content.add{type = "button", name = "odb_link_close", caption = "Close", style = "back_button"}
+end
+
 -- /odb-link — run by a player in-game to start linking their Discord account.
 commands.add_command("odb-link", "Get a code to link your Discord account", function(cmd)
   local player = cmd.player_index and game.get_player(cmd.player_index)
@@ -227,8 +252,16 @@ commands.add_command("odb-link", "Get a code to link your Discord account", func
   storage.odb.link_counter = (storage.odb.link_counter or 0) + 1
   local code = make_link_code(storage.odb.link_counter)
   storage.odb.pending[code] = { player = player.name, expires = game.tick + LINK_TTL_TICKS }
-  player.print("[Discord link] Code: " .. code
-    .. " — in Discord run:  !link " .. code .. "   (expires in ~60s)")
+  open_link_gui(player, code)
+end)
+
+script.on_event(defines.events.on_gui_click, function(e)
+  if e.element.name == "odb_link_close" then
+    local player = game.get_player(e.player_index)
+    if player and player.gui.screen[ODB_LINK_FRAME] then
+      player.gui.screen[ODB_LINK_FRAME].destroy()
+    end
+  end
 end)
 
 -- /odb-confirm-link <code> <discord_id> <discord_name...> — called by the bridge over RCON.
@@ -259,6 +292,56 @@ commands.add_command("odb-confirm-link", "Open Discord Bridge: confirm a player 
   rcon.print("Linked " .. pend.player .. " to Discord user " .. who .. ".")
 end)
 
+-- /odb-register-discord-code <code> <discord_id> <discord_name...> — bridge calls this over RCON
+-- to pre-register a code issued on the Discord side so /odb-discord-link can complete the link.
+commands.add_command("odb-register-discord-code", "Open Discord Bridge: register Discord-initiated link code (RCON)", function(cmd)
+  if cmd.player_index then return end -- RCON only
+  local code, discord_id, discord_name =
+    string.match(cmd.parameter or "", "^(%S+)%s+(%S+)%s*(.*)$")
+  if not code then
+    rcon.print("ERROR: usage /odb-register-discord-code <code> <discord_id> <name>")
+    return
+  end
+  storage.odb.discord_pending = storage.odb.discord_pending or {}
+  storage.odb.discord_pending[string.upper(code)] = {
+    discord_id   = discord_id,
+    discord_name = discord_name,
+    expires      = game.tick + LINK_TTL_TICKS,
+  }
+end)
+
+-- /odb-discord-link <code> — run by a player in-game to complete a Discord-initiated link.
+commands.add_command("odb-discord-link", "Complete Discord account linking with a code from Discord", function(cmd)
+  local player = cmd.player_index and game.get_player(cmd.player_index)
+  if not player then return end
+  local code = string.upper(string.match(cmd.parameter or "", "%S+") or "")
+  if code == "" then
+    player.print("[Discord link] Usage: /odb-discord-link <code>")
+    return
+  end
+  storage.odb.discord_pending = storage.odb.discord_pending or {}
+  local pend = storage.odb.discord_pending[code]
+  if not pend then
+    player.print("[Discord link] That code is invalid or has already been used.")
+    return
+  end
+  if game.tick > pend.expires then
+    storage.odb.discord_pending[code] = nil
+    player.print("[Discord link] That code has expired — type !link in Discord to get a new one.")
+    return
+  end
+  storage.odb.discord_pending[code] = nil
+  storage.odb.links = storage.odb.links or {}
+  storage.odb.links[player.name] = { discord_id = pend.discord_id, discord_name = pend.discord_name }
+  local who = (pend.discord_name ~= "" and pend.discord_name) or pend.discord_id
+  game.print("[color=114,137,218][Discord][/color] " .. player.name .. " linked to " .. who)
+  write_event("odb.link_confirmed", {
+    player       = player.name,
+    discord_name = who,
+    text         = player.name .. " linked to Discord user " .. who .. ".",
+  })
+end)
+
 -- /odb-unlink — a player removes their own link.
 commands.add_command("odb-unlink", "Unlink your Discord account", function(cmd)
   local player = cmd.player_index and game.get_player(cmd.player_index)
@@ -267,6 +350,10 @@ commands.add_command("odb-unlink", "Unlink your Discord account", function(cmd)
   if storage.odb.links[player.name] then
     storage.odb.links[player.name] = nil
     player.print("[Discord link] Your Discord account has been unlinked.")
+    write_event("odb.link_removed", {
+      player = player.name,
+      text   = player.name .. " unlinked their Discord account.",
+    })
   else
     player.print("[Discord link] You weren't linked.")
   end

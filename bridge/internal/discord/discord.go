@@ -353,6 +353,17 @@ func (c *Client) RemoveRole(guildID, userID, roleID string) error {
 	return c.session.GuildMemberRoleRemove(guildID, userID, roleID)
 }
 
+// SendDM opens a DM channel with userID and sends content. Falls back gracefully if the
+// user has DMs disabled — the caller should handle the error and post in-channel instead.
+func (c *Client) SendDM(userID, content string) error {
+	ch, err := c.session.UserChannelCreate(userID)
+	if err != nil {
+		return err
+	}
+	_, err = c.session.ChannelMessageSend(ch.ID, content)
+	return err
+}
+
 // SetNickname sets a member's server nickname ("" clears it). Needs Manage Nicknames and
 // a role above the member; can't change the guild owner.
 func (c *Client) SetNickname(guildID, userID, nick string) error {

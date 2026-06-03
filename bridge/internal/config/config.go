@@ -107,10 +107,12 @@ func (a AdminConfig) PermissionFallback() bool {
 // the bridge runs, posting the reply back. Admins choose exactly which commands exist.
 // Rcon may be multiline (e.g. a /silent-command script). Admin gates it to Discord admins.
 type Command struct {
-	Trigger string `yaml:"trigger"`
-	Rcon    string `yaml:"rcon"`
-	Admin   bool   `yaml:"admin"`
-	Args    bool   `yaml:"args"` // opt-in: interpolate {args}/{1}.../{user} from the message
+	Trigger   string `yaml:"trigger"`
+	Rcon      string `yaml:"rcon"`
+	Admin     bool   `yaml:"admin"`
+	Args      bool   `yaml:"args"`       // opt-in: interpolate {args}/{1}.../{user} from the message
+	UsageHint    string `yaml:"usage_hint"`    // shown instead of generic "Usage:" when args are missing
+	DiscordLink  bool   `yaml:"discord_link"`  // when typed with no code, initiate the Discord→game reverse linking flow
 }
 
 // Load reads and validates configuration. If the config file is absent, it builds the

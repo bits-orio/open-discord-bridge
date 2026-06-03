@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"math/rand"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -58,6 +59,11 @@ func main() {
 	onInbound := func(msg discord.InboundMessage) {
 		if cmd, ok := cmdMap[firstWord(msg.Message)]; ok {
 			isAdmin := resolveAdmin(cfg.Discord.Admins, msg)
+			// Discord-initiated linking: !link with no code → DM the player an in-game command.
+			if cmd.DiscordLink && len(commandArgs(msg.Message)) == 0 {
+				go initiateDiscordLink(rc, dc, msg)
+				return
+			}
 			if reply := runCommand(rc, cmd, isAdmin, commandArgs(msg.Message), msg.User, msg.UserID); reply != "" {
 				dc.Send(msg.ChannelID, reply)
 			}
@@ -372,6 +378,35 @@ func parseLinks(statusJSON string) []linkInfo {
 	var links []linkInfo
 	_ = json.Unmarshal(s.Links, &links) // [] or {} (empty) -> nil; [{...}] -> entries
 	return links
+}
+
+// generateDiscordLinkCode returns a random 6-character base-36 code for Discord-initiated linking.
+func generateDiscordLinkCode() string {
+	const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	b := make([]byte, 6)
+	for i := range b {
+		b[i] = chars[rand.Intn(len(chars))]
+	}
+	return string(b)
+}
+
+// initiateDiscordLink handles the Discord-side !link (no code): generates a one-time code,
+// registers it in Factorio via RCON, then DMs the user the in-game command to complete linking.
+// Falls back to an in-channel mention if the user has DMs disabled.
+func initiateDiscordLink(rc *rcon.Client, dc *discord.Client, msg discord.InboundMessage) {
+	code := generateDiscordLinkCode()
+	rconCmd := fmt.Sprintf("/odb-register-discord-code %s %s %s",
+		code, sanitizeArg(msg.UserID), sanitizeArg(msg.User))
+	if _, err := rc.Execute(rconCmd); err != nil {
+		log.Printf("discord-link: RCON failed: %v", err)
+		dc.Send(msg.ChannelID, ":x: Factorio server is not reachable right now — try again shortly.")
+		return
+	}
+	dmText := fmt.Sprintf(":link: Run this command in Factorio to link your account (expires ~60s):\n```\n/odb-discord-link %s\n```", code)
+	if err := dc.SendDM(msg.UserID, dmText); err != nil {
+		log.Printf("discord-link: DM to %s failed (%v) — posting in channel", msg.UserID, err)
+		dc.Send(msg.ChannelID, fmt.Sprintf("<@%s> %s", msg.UserID, dmText))
+	}
 }
 
 // mentionResolver keeps a live cache of player-name → Discord-ID mappings and resolves
@@ -712,6 +747,10 @@ func formatEvent(ev Event) string {
 		return ":green_circle: **Open Discord Bridge established** — connected to Factorio"
 	case "bridge.disconnected":
 		return ":red_circle: **Open Discord Bridge disconnected** — lost contact with Factorio"
+	case "odb.link_confirmed":
+		return "```\nLinked " + str(d["player"]) + " to Discord user " + str(d["discord_name"]) + ".\n```"
+	case "odb.link_removed":
+		return "```\n" + str(d["player"]) + " unlinked their Discord account.\n```"
 	default:
 		return formatGeneric(ev.Event, d)
 	}
@@ -798,6 +837,9 @@ func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string
 	rconCmd := cmd.Rcon
 	if cmd.Args {
 		if templateNeedsArgs(cmd.Rcon) && len(argv) == 0 {
+			if cmd.UsageHint != "" {
+				return cmd.UsageHint
+			}
 			return fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger)
 		}
 		rconCmd = interpolate(cmd.Rcon, argv, user, userID)
@@ -933,7 +975,7 @@ func renderEvent(ev Event, decorate bool) string {
 // "[ns → event]" label), as opposed to the bridge's own vanilla.*/bridge.* events.
 func isGenericEvent(eventKey string) bool {
 	switch ns, _, _ := strings.Cut(eventKey, "."); ns {
-	case "vanilla", "bridge":
+	case "vanilla", "bridge", "odb":
 		return false
 	default:
 		return true
