@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -125,6 +126,9 @@ func main() {
 		dc.Send(channel, renderEvent(ev, cfg.Discord.Embed))
 	}
 
+	// Mention resolver: populated once ctx is live, but declared here so onLine can close over it.
+	mentions := &mentionResolver{}
+
 	// Game → Discord.
 	var lastEvent atomic.Int64
 	var tail *transport.Tailer
@@ -157,6 +161,12 @@ func main() {
 		lastEvent.Store(time.Now().Unix())
 		if sm != nil {
 			handleStatusEvent(sm, ev, joinEvent, leftEvent)
+		}
+		// Resolve @playerName mentions to Discord pings in chat messages.
+		if isChatEvent(ev.Event) {
+			if msg, ok := ev.Data["message"].(string); ok && msg != "" {
+				ev.Data["message"] = mentions.resolve(msg)
+			}
 		}
 		emit(ev)
 	}
@@ -227,6 +237,9 @@ func main() {
 			}
 		}
 	}()
+
+	// Keep @mention resolution cache fresh (player name → Discord user ID).
+	go syncMentions(ctx, rc, mentions)
 
 	// Keep a Discord role / nickname in sync with linked players.
 	if (cfg.Discord.LinkedRoleID != "" || cfg.Discord.LinkedNickname != "") && cfg.Discord.GuildID != "" {
@@ -359,6 +372,66 @@ func parseLinks(statusJSON string) []linkInfo {
 	var links []linkInfo
 	_ = json.Unmarshal(s.Links, &links) // [] or {} (empty) -> nil; [{...}] -> entries
 	return links
+}
+
+// mentionResolver keeps a live cache of player-name → Discord-ID mappings and resolves
+// @name tokens in chat messages to proper Discord <@id> pings.
+type mentionResolver struct {
+	mu    sync.RWMutex
+	links map[string]string // lowercase factorio name → discord user ID
+}
+
+// atMentionRe matches an @token that may be preceded by whitespace or start-of-string,
+// capturing the leading separator and the name separately so we can preserve spacing.
+var atMentionRe = regexp.MustCompile(`(^|[\s,])@([A-Za-z0-9_\-]+)`)
+
+func (mr *mentionResolver) update(links []linkInfo) {
+	m := make(map[string]string, len(links))
+	for _, l := range links {
+		if l.DiscordID != "" {
+			m[l.Player] = l.DiscordID
+		}
+	}
+	mr.mu.Lock()
+	mr.links = m
+	mr.mu.Unlock()
+}
+
+func (mr *mentionResolver) resolve(s string) string {
+	mr.mu.RLock()
+	links := mr.links
+	mr.mu.RUnlock()
+	if len(links) == 0 {
+		return s
+	}
+	return atMentionRe.ReplaceAllStringFunc(s, func(m string) string {
+		at := strings.IndexByte(m, '@')
+		name := m[at+1:]
+		if id, ok := links[name]; ok {
+			return m[:at] + "<@" + id + ">"
+		}
+		return m
+	})
+}
+
+// syncMentions polls /odb-status every 20s to keep the mention cache fresh.
+func syncMentions(ctx context.Context, rc *rcon.Client, mr *mentionResolver) {
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+	refresh := func() {
+		if links, ok := queryLinks(rc); ok {
+			mr.update(links)
+		}
+	}
+	refresh()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refresh()
+		}
+	}
 }
 
 // queryLinks fetches the current player↔Discord links over RCON. ok=false means the mod
