@@ -185,11 +185,17 @@ commands.add_command("odb-status", "Open Discord Bridge: report mod status as JS
       end
     end
   end
+  local players = {}
+  for _, p in pairs(game.connected_players) do
+    players[#players + 1] = p.name
+  end
   rcon.print(helpers.table_to_json({
     mod_version = script.active_mods["open-discord-bridge"],
     interface   = INTERFACE,
     sources     = (storage.odb and storage.odb.sources) or {},
     links       = links,
+    players     = players,
+    mods        = script.active_mods,
   }))
 end)
 

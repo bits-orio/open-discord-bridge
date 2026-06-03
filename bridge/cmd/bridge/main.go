@@ -22,6 +22,7 @@ import (
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/discord"
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/rcon"
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/router"
+	"github.com/bits-orio/open-discord-bridge/bridge/internal/status"
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/transport"
 )
 
@@ -97,9 +98,17 @@ func main() {
 	defer dc.Close()
 	log.Printf("bridge: connected to Discord; tailing %s", cfg.Factorio.EventsFile)
 
+	// Channel topic status: enabled by default; set channel_topic_status: false to disable.
+	topicEnabled := cfg.Discord.ChannelTopicStatus == nil || *cfg.Discord.ChannelTopicStatus
+	primaryChannelID := cfg.Discord.Routes[0].ChannelID
+	var sm *status.Manager
+	if topicEnabled {
+		sm = status.New(primaryChannelID, dc)
+	}
+
 	// Version handshake: confirm the companion mod is reachable and log its version.
-	if v := queryModVersion(rc); v != "" {
-		log.Printf("bridge: companion mod version %s", v)
+	if st, ok := queryODBStatus(rc); ok {
+		log.Printf("bridge: companion mod version %s", st.ModVersion)
 	} else {
 		log.Printf("bridge: companion mod not reachable over RCON yet (will retry on demand)")
 	}
@@ -116,38 +125,6 @@ func main() {
 		dc.Send(channel, renderEvent(ev, cfg.Discord.Embed))
 	}
 
-	// Startup permission preflight: warn (logs + Discord, with fix steps) about anything
-	// the bot is missing for the configured features.
-	go func() {
-		rep := dc.CheckPermissions(discord.PermissionCheck{
-			GuildID:     cfg.Discord.GuildID,
-			ChannelIDs:  rt.InboundChannels(), // distinct channels the bridge posts to
-			NeedRoles:   cfg.Discord.LinkedRoleID != "",
-			NeedNicks:   cfg.Discord.LinkedNickname != "",
-			RoleAboveID: cfg.Discord.LinkedRoleID,
-		})
-		if rep.Err != "" {
-			log.Printf("bridge: could not check permissions: %s", rep.Err)
-			return
-		}
-		if rep.OK() {
-			log.Printf("bridge: Discord permission preflight passed (checked channels: %s)",
-				strings.Join(rt.InboundChannels(), ", "))
-			return
-		}
-		if len(rep.Missing) > 0 {
-			log.Printf("bridge: bot is missing permissions: %s", strings.Join(rep.Missing, ", "))
-		}
-		if rep.Hierarchy {
-			log.Printf("bridge: bot's role is not above the linked role")
-		}
-		if ch, ok := rt.Channel("bridge.warning"); ok {
-			dc.Send(ch, permissionHelp(rep))
-		} else {
-			log.Printf("bridge: no route matches \"bridge.warning\" — warning logged only, not posted to Discord")
-		}
-	}()
-
 	// Game → Discord.
 	var lastEvent atomic.Int64
 	var tail *transport.Tailer
@@ -163,6 +140,14 @@ func main() {
 	default:
 		tail = transport.NewLocal(cfg.Factorio.EventsFile, cfg.Interval())
 	}
+	joinEvent := cfg.Discord.StatusPlayerJoinedEvent
+	if joinEvent == "" {
+		joinEvent = "vanilla.player_joined"
+	}
+	leftEvent := cfg.Discord.StatusPlayerLeftEvent
+	if leftEvent == "" {
+		leftEvent = "vanilla.player_left"
+	}
 	onLine := func(line []byte) {
 		var ev Event
 		if err := json.Unmarshal(line, &ev); err != nil {
@@ -170,6 +155,9 @@ func main() {
 			return
 		}
 		lastEvent.Store(time.Now().Unix())
+		if sm != nil {
+			handleStatusEvent(sm, ev, joinEvent, leftEvent)
+		}
 		emit(ev)
 	}
 
@@ -180,18 +168,89 @@ func main() {
 	defer stop()
 	go tail.Run(ctx, onLine)
 
+	// Permission monitor: check at startup and retry every 20s until all permissions are
+	// granted. Posts a warning when something is missing and a confirmation when fixed.
+	go func() {
+		pc := discord.PermissionCheck{
+			GuildID:         cfg.Discord.GuildID,
+			ChannelIDs:      rt.InboundChannels(),
+			NeedRoles:       cfg.Discord.LinkedRoleID != "",
+			NeedNicks:       cfg.Discord.LinkedNickname != "",
+			RoleAboveID:     cfg.Discord.LinkedRoleID,
+			NeedTopicStatus: sm != nil,
+			TopicChannelID:  primaryChannelID,
+		}
+		warnCh, hasWarnCh := rt.Channel("bridge.warning")
+
+		rep := dc.CheckPermissions(pc)
+		if rep.Err != "" {
+			log.Printf("bridge: could not check permissions: %s", rep.Err)
+			return
+		}
+		if rep.OK() {
+			log.Printf("bridge: Discord permission preflight passed (checked channels: %s)",
+				strings.Join(rt.InboundChannels(), ", "))
+			return
+		}
+
+		// Missing permissions — post the warning and start retry loop.
+		if len(rep.Missing) > 0 {
+			log.Printf("bridge: bot is missing permissions: %s", strings.Join(rep.Missing, ", "))
+		}
+		if rep.Hierarchy {
+			log.Printf("bridge: bot's role is not above the linked role")
+		}
+		if hasWarnCh {
+			dc.Send(warnCh, permissionHelp(rep))
+		} else {
+			log.Printf("bridge: no route matches \"bridge.warning\" — warning logged only, not posted to Discord")
+		}
+
+		ticker := time.NewTicker(20 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				rep = dc.CheckPermissions(pc)
+				if rep.Err != "" {
+					continue // can't check right now, try again
+				}
+				if rep.OK() {
+					log.Printf("bridge: Discord permissions now OK")
+					if hasWarnCh {
+						dc.Send(warnCh, ":white_check_mark: **Open Discord Bridge — all permissions granted.** The bridge is fully operational.")
+					}
+					return
+				}
+			}
+		}
+	}()
+
 	// Keep a Discord role / nickname in sync with linked players.
 	if (cfg.Discord.LinkedRoleID != "" || cfg.Discord.LinkedNickname != "") && cfg.Discord.GuildID != "" {
 		go syncLinkedMembers(ctx, rc, dc, cfg.Discord.GuildID, cfg.Discord.LinkedRoleID, cfg.Discord.LinkedNickname)
 	}
 
-	// Watch the bridge↔Factorio link (RCON + mod handshake) and announce transitions.
-	if cfg.Discord.AnnounceStatus {
-		go monitorConnection(ctx, rc, func(connected bool, version string) {
-			if connected {
-				emit(Event{Event: "bridge.established", Data: map[string]any{"version": version}})
-			} else {
-				emit(Event{Event: "bridge.disconnected"})
+	// Watch the bridge↔Factorio link (RCON + mod handshake), update the channel topic,
+	// and optionally announce connect/disconnect transitions to Discord.
+	if cfg.Discord.AnnounceStatus || sm != nil {
+		go monitorConnection(ctx, rc, func(connected bool, st odbStatus) {
+			now := time.Now()
+			if sm != nil {
+				if connected {
+					sm.OnConnected(now, st.Players)
+				} else {
+					sm.OnDisconnected(now)
+				}
+			}
+			if cfg.Discord.AnnounceStatus {
+				if connected {
+					emit(Event{Event: "bridge.established", Data: map[string]any{"version": st.ModVersion}})
+				} else {
+					emit(Event{Event: "bridge.disconnected"})
+				}
 			}
 		})
 	}
@@ -253,23 +312,22 @@ func main() {
 // monitorConnection polls the RCON+mod handshake and reports connect/disconnect
 // transitions via announce. The initial state is announced only if connected (so a bridge
 // started before Factorio doesn't post a spurious "disconnected").
-func monitorConnection(ctx context.Context, rc *rcon.Client, announce func(connected bool, version string)) {
+func monitorConnection(ctx context.Context, rc *rcon.Client, announce func(connected bool, st odbStatus)) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	var last *bool
 	check := func() {
-		version := queryModVersion(rc)
-		cur := version != ""
+		st, ok := queryODBStatus(rc)
 		switch {
 		case last == nil:
-			if cur {
-				announce(true, version)
+			if ok {
+				announce(true, st)
 			}
-			last = &cur
-		case *last != cur:
-			announce(cur, version)
-			*last = cur
+			last = &ok
+		case *last != ok:
+			announce(ok, st)
+			*last = ok
 		}
 	}
 
@@ -397,17 +455,43 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 	}
 }
 
-// queryModVersion asks the companion mod for its version over RCON ("" if unreachable).
-func queryModVersion(rc *rcon.Client) string {
+// odbStatus is the parsed result of an /odb-status RCON call.
+type odbStatus struct {
+	ModVersion string
+	Players    []string
+}
+
+// queryODBStatus calls /odb-status and returns the parsed result.
+// ok=false means the mod is unreachable.
+func queryODBStatus(rc *rcon.Client) (odbStatus, bool) {
 	resp, err := rc.Execute("/odb-status")
 	if err != nil {
-		return ""
+		return odbStatus{}, false
 	}
-	var ms struct {
-		ModVersion string `json:"mod_version"`
+	var raw struct {
+		ModVersion string          `json:"mod_version"`
+		Players    json.RawMessage `json:"players"`
 	}
-	_ = json.Unmarshal([]byte(resp), &ms)
-	return ms.ModVersion
+	if json.Unmarshal([]byte(resp), &raw) != nil || raw.ModVersion == "" {
+		return odbStatus{}, false
+	}
+	var players []string
+	_ = json.Unmarshal(raw.Players, &players) // {} -> nil (no players), [...] -> slice
+	return odbStatus{ModVersion: raw.ModVersion, Players: players}, true
+}
+
+// handleStatusEvent feeds relevant JSONL events to the status manager.
+func handleStatusEvent(sm *status.Manager, ev Event, joinEvent, leftEvent string) {
+	switch ev.Event {
+	case joinEvent:
+		if name := str(ev.Data["player"]); name != "" {
+			sm.OnPlayerJoined(name)
+		}
+	case leftEvent:
+		if name := str(ev.Data["player"]); name != "" {
+			sm.OnPlayerLeft(name)
+		}
+	}
 }
 
 // roundTrip backs POST /v1/test: post a message to each bridged channel (outbound)

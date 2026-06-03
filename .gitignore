@@ -2,6 +2,7 @@
 /.env
 /bridge/.env
 /bridge/bridge.yaml
+/bridge/bridge-local.yaml
 /bridge/bridge.sftp.yaml
 
 # Built binaries

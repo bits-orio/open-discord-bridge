@@ -68,13 +68,16 @@ type RCONConfig struct {
 }
 
 type DiscordConfig struct {
-	TokenEnv       string      `yaml:"token_env"`
-	Token          string      `yaml:"-"` // resolved from env at load time
-	GuildID        string      `yaml:"guild_id"`
-	Embed          bool        `yaml:"embed"`           // color integrator-event category labels via an ANSI code block
-	AnnounceStatus bool        `yaml:"announce_status"` // post bridge.established/disconnected to Discord
-	LinkedRoleID   string      `yaml:"linked_role_id"`  // role kept in sync with linked players
-	LinkedNickname string      `yaml:"linked_nickname"` // nickname format for linked members ({factorio}/{discord})
+	TokenEnv            string      `yaml:"token_env"`
+	Token               string      `yaml:"-"` // resolved from env at load time
+	GuildID             string      `yaml:"guild_id"`
+	Embed               bool        `yaml:"embed"`                  // color integrator-event category labels via an ANSI code block
+	AnnounceStatus      bool        `yaml:"announce_status"`        // post bridge.established/disconnected to Discord
+	ChannelTopicStatus         *bool       `yaml:"channel_topic_status"`          // keep channel topic in sync with server state (default true)
+	StatusPlayerJoinedEvent    string      `yaml:"status_player_joined_event"`    // event key for player joins (default: vanilla.player_joined)
+	StatusPlayerLeftEvent      string      `yaml:"status_player_left_event"`      // event key for player leaves (default: vanilla.player_left)
+	LinkedRoleID        string      `yaml:"linked_role_id"`         // role kept in sync with linked players
+	LinkedNickname      string      `yaml:"linked_nickname"`        // nickname format for linked members ({factorio}/{discord})
 	Routes         []Route     `yaml:"routes"`
 	Admins         AdminConfig `yaml:"admins"`
 	Commands       []Command   `yaml:"commands"`
@@ -127,9 +130,10 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}
 
-	// Allow ${ENV} and a leading ~/ in the events path so configs stay portable and
-	// don't need to hardcode an absolute home directory.
+	// Allow ${ENV} and a leading ~/ in the events path and RCON address so configs stay
+	// portable and don't need to hardcode machine-specific values.
 	c.Factorio.EventsFile = expandPath(c.Factorio.EventsFile)
+	c.Factorio.RCON.Address = os.ExpandEnv(c.Factorio.RCON.Address)
 
 	if c.Transport == "" {
 		c.Transport = "local"
@@ -233,8 +237,11 @@ func LoadFromEnv() (*Config, error) {
 			TokenEnv:       "DISCORD_BOT_TOKEN",
 			Token:          os.Getenv("DISCORD_BOT_TOKEN"),
 			GuildID:        os.Getenv("ODB_DISCORD_GUILD_ID"),
-			Embed:          parseBool(os.Getenv("ODB_EMBED")),
-			AnnounceStatus: parseBool(os.Getenv("ODB_ANNOUNCE_STATUS")),
+			Embed:               parseBool(os.Getenv("ODB_EMBED")),
+			AnnounceStatus:      parseBool(os.Getenv("ODB_ANNOUNCE_STATUS")),
+			ChannelTopicStatus:         optBool(os.Getenv("ODB_CHANNEL_TOPIC_STATUS")),
+			StatusPlayerJoinedEvent:    os.Getenv("ODB_STATUS_PLAYER_JOINED_EVENT"),
+			StatusPlayerLeftEvent:      os.Getenv("ODB_STATUS_PLAYER_LEFT_EVENT"),
 			LinkedRoleID:   os.Getenv("ODB_LINKED_ROLE_ID"),
 			LinkedNickname: os.Getenv("ODB_LINKED_NICKNAME"),
 			Admins: AdminConfig{

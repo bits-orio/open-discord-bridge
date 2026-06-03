@@ -188,11 +188,13 @@ func (c *Client) Send(channelID, content string) {
 
 // PermissionCheck describes what the bridge needs the bot to be able to do.
 type PermissionCheck struct {
-	GuildID     string
-	ChannelIDs  []string // channels the bridge posts to; messaging perms are checked here (honors per-channel overwrites)
-	NeedRoles   bool     // Manage Roles (linked_role_id)
-	NeedNicks   bool     // Manage Nicknames (linked_nickname)
-	RoleAboveID string   // bot's top role must outrank this role (the linked role)
+	GuildID         string
+	ChannelIDs      []string // channels the bridge posts to; messaging perms are checked here (honors per-channel overwrites)
+	NeedRoles       bool     // Manage Roles (linked_role_id)
+	NeedNicks       bool     // Manage Nicknames (linked_nickname)
+	RoleAboveID     string   // bot's top role must outrank this role (the linked role)
+	NeedTopicStatus bool     // Manage Channels (channel_topic_status — edit channel topic)
+	TopicChannelID  string   // channel whose topic will be updated
 }
 
 // PermissionReport is the result of a permission preflight.
@@ -315,7 +317,20 @@ func (c *Client) CheckPermissions(pc PermissionCheck) PermissionReport {
 	if pc.NeedNicks {
 		need(discordgo.PermissionManageNicknames, "Manage Nicknames")
 	}
+	if pc.NeedTopicStatus && pc.TopicChannelID != "" {
+		if ch, err := c.session.Channel(pc.TopicChannelID); err == nil {
+			if effective(ch)&discordgo.PermissionManageChannels == 0 {
+				rep.Missing = append(rep.Missing, "Manage Channels")
+			}
+		}
+	}
 	return rep
+}
+
+// SetChannelTopic updates a text channel's topic string. Requires Manage Channels.
+func (c *Client) SetChannelTopic(channelID, topic string) error {
+	_, err := c.session.ChannelEdit(channelID, &discordgo.ChannelEdit{Topic: topic})
+	return err
 }
 
 // GuildOwnerID returns the guild owner's user ID. Used to skip the owner for actions
