@@ -175,6 +175,7 @@ jobs:
           files: |
             dist/*
             deploy/pterodactyl-egg.json
+            bridge/bridge.yaml.example
             ${{ steps.info.outputs.folder }}.zip
           # Curated notes from changelog.txt (canonical for this project).
           body: ${{ steps.notes.outputs.notes }}

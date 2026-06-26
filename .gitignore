@@ -9,5 +9,9 @@
 /bridge/odb-bridge
 /wizard/odb-wizard
 
+# Runtime state written by the bridge (contains Discord IDs)
+/bridge/links.json
+/bridge/links.json.tmp
+
 # Generated local test rig (save, mods symlink, server settings)
 /.run/

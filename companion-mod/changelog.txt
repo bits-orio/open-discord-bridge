@@ -1,4 +1,16 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.6
+Date: 2026-06-26
+  Changes:
+    - Docs: added QUICKSTART.md — a step-by-step setup guide for self-hosters who download
+      the published binary (previous docs assumed a git clone, which confused binary users).
+    - Release: bridge.yaml.example is now published as a release asset, so binary users get
+      a documented, editable config template (previously only the binaries, egg, and mod
+      zip were shipped).
+    - Wizard: its closing "next steps" no longer reference clone-only scripts; it now points
+      to running the binary directly and to QUICKSTART.md.
+    - No gameplay changes — the companion mod is functionally identical to 0.1.5.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.5
 Date: 2026-06-05
   Changes:

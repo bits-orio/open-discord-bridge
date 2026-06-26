@@ -55,9 +55,17 @@ Factorio  ──(events.jsonl)──▶  Bridge (Go)  ──▶  Discord
 Events stream over a **local file** (bridge on the same host) or **SFTP** (remote host);
 RCON is always used for inbound delivery.
 
-## Quick start (local, one box)
+## Quick start
 
-You need Go 1.23+ and a Factorio headless server. Then:
+**Most people — download the binary (no build needed).** Grab `odb-bridge`, `odb-wizard`,
+the companion-mod zip, and `bridge.yaml.example` from the
+[Releases](https://github.com/bits-orio/open-discord-bridge/releases) page, then follow the
+step-by-step **[QUICKSTART.md](QUICKSTART.md)**.
+
+**On a managed host (Pterodactyl / AleForge / …)?** You don't create a config file at all —
+configure via panel variables (env-var mode). See [DEPLOYMENT.md](DEPLOYMENT.md).
+
+**From source (developers).** You need Go 1.23+ and a Factorio headless server:
 
 ```sh
 ./install.sh     # builds the bridge, links the companion mod, writes server settings

@@ -104,9 +104,15 @@ func main() {
 
 	fmt.Printf("\n✓ Wrote %s and %s\n", cfgPath, envPath)
 	fmt.Println("\nNext:")
-	fmt.Println("  - Install the companion mod (companion-mod/link-mod.sh).")
-	fmt.Println("  - Start it: ./start-all.sh  (or ./start-bridge.sh if Factorio runs separately)")
-	fmt.Println("  - Then type in your channel / in-game to confirm the bridge works.")
+	fmt.Println("  1. Install the companion mod on your Factorio server: drop the")
+	fmt.Println("     open-discord-bridge_<version>.zip into its mods/ folder (or install it")
+	fmt.Println("     from the in-game mod browser).")
+	fmt.Println("  2. Make sure the server has RCON enabled (--rcon-port / --rcon-password).")
+	fmt.Println("  3. Run the bridge — it does NOT auto-load .env, so source it first:")
+	fmt.Printf("       set -a; . %s; set +a\n", envPath)
+	fmt.Printf("       ./odb-bridge -config %s\n", cfgPath)
+	fmt.Println("  4. Type in your channel / in-game to confirm the bridge works.")
+	fmt.Println("\n  Full step-by-step guide: QUICKSTART.md")
 }
 
 func pickGuild(in *bufio.Scanner, bot *wizard.Bot) wizard.Guild {
