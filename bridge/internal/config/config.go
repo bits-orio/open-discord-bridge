@@ -39,7 +39,8 @@ type Config struct {
 
 type FactorioConfig struct {
 	RCON               RCONConfig `yaml:"rcon"`
-	EventsFile         string     `yaml:"events_file"` // local path, or remote path for sftp
+	EventsFile         string     `yaml:"events_file"`  // local path, or remote path for sftp
+	LinksFile          string     `yaml:"links_file"`   // local path for persistent links (default: links.json next to binary)
 	RequiredModVersion string     `yaml:"required_mod_version"`
 	SFTP               SFTPConfig `yaml:"sftp"`
 }
@@ -225,6 +226,7 @@ func LoadFromEnv() (*Config, error) {
 				Password:    os.Getenv("FACTORIO_RCON_PASSWORD"),
 			},
 			EventsFile:         expandPath(os.Getenv("ODB_EVENTS_FILE")),
+			LinksFile:          expandPath(os.Getenv("ODB_LINKS_FILE")),
 			RequiredModVersion: os.Getenv("ODB_REQUIRED_MOD_VERSION"),
 			SFTP: SFTPConfig{
 				Host:           os.Getenv("ODB_SFTP_HOST"),

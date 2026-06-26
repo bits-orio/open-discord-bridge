@@ -35,6 +35,12 @@ type Manager struct {
 	disconnectedAt time.Time
 	players        []string // sorted alphabetically
 
+	// gameTicks is the game.tick snapshot from /odb-status at connection time.
+	// gameTicksAt is the wall time of that snapshot. When gameTicksAt is zero,
+	// we fall back to time.Since(connectedAt) for the uptime display.
+	gameTicks   uint64
+	gameTicksAt time.Time
+
 	lastUpdate   time.Time
 	pendingTimer *time.Timer
 }
@@ -44,8 +50,10 @@ func New(channelID string, setter Setter) *Manager {
 	return &Manager{ch: channelID, set: setter}
 }
 
-// OnConnected records a connection event with the current player list.
-func (m *Manager) OnConnected(t time.Time, players []string) {
+// OnConnected records a connection event with the current player list and game tick.
+// ticks is the game.tick snapshot from /odb-status; nil means the mod didn't report it
+// (old version), in which case uptime falls back to wall-clock time since connection.
+func (m *Manager) OnConnected(t time.Time, players []string, ticks *uint64) {
 	ps := make([]string, len(players))
 	copy(ps, players)
 	sort.Strings(ps)
@@ -55,6 +63,12 @@ func (m *Manager) OnConnected(t time.Time, players []string) {
 	m.hasEverSeen = true
 	m.connectedAt = t
 	m.players = ps
+	if ticks != nil {
+		m.gameTicks = *ticks
+		m.gameTicksAt = t
+	} else {
+		m.gameTicksAt = time.Time{}
+	}
 	m.mu.Unlock()
 	m.schedule()
 }
@@ -143,6 +157,25 @@ func (m *Manager) push() {
 	if err := m.set.SetChannelTopic(m.ch, topic); err != nil {
 		log.Printf("status: set channel topic: %v", err)
 	}
+	m.scheduleRefresh()
+}
+
+// scheduleRefresh arms a cooldown-interval timer to re-push when the server is online
+// and no event-driven push is already pending. This keeps the uptime counter advancing
+// even when no player events arrive.
+func (m *Manager) scheduleRefresh() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if !m.online || m.pendingTimer != nil {
+		return
+	}
+	m.pendingTimer = time.AfterFunc(cooldown, func() {
+		m.mu.Lock()
+		m.pendingTimer = nil
+		m.lastUpdate = time.Now()
+		m.mu.Unlock()
+		m.push()
+	})
 }
 
 // format builds the topic string. Called with m.mu held.
@@ -155,7 +188,7 @@ func (m *Manager) format() string {
 	var pfx, uptimePart string
 	if m.online {
 		pfx = "🟢"
-		uptimePart = "⏱ Up " + fmtDur(time.Since(m.connectedAt))
+		uptimePart = "⏱ Up " + fmtDur(m.gameUptime())
 	} else {
 		pfx = "🔴 Offline"
 		if !m.disconnectedAt.IsZero() {
@@ -204,6 +237,18 @@ func playerSection(players []string, cap int) string {
 		s += fmt.Sprintf(" +%d more", extra)
 	}
 	return fmt.Sprintf("%s (%d)", s, n)
+}
+
+// gameUptime returns how long the current map has been running. When a game.tick snapshot
+// is available it computes base map age (ticks/60s) plus real elapsed time since the
+// snapshot was taken. Without tick data it falls back to wall-clock time since connection.
+// Called with m.mu held.
+func (m *Manager) gameUptime() time.Duration {
+	if !m.gameTicksAt.IsZero() {
+		base := time.Duration(m.gameTicks/60) * time.Second
+		return base + time.Since(m.gameTicksAt)
+	}
+	return time.Since(m.connectedAt)
 }
 
 // fmtDur formats a duration as "Xd Yh", "Xh Ym", or "Xm" (rounded to the minute).

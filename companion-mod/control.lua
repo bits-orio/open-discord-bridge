@@ -197,6 +197,7 @@ commands.add_command("odb-status", "Open Discord Bridge: report mod status as JS
     links       = links,
     players     = players,
     mods        = script.active_mods,
+    ticks       = game.tick,
   }))
 end)
 
@@ -289,6 +290,12 @@ commands.add_command("odb-confirm-link", "Open Discord Bridge: confirm a player 
   storage.odb.links[pend.player] = { discord_id = discord_id, discord_name = discord_name }
   local who = (discord_name ~= "" and discord_name) or discord_id
   game.print("[color=114,137,218][Discord][/color] " .. pend.player .. " linked to " .. who)
+  write_event("odb.link_confirmed", {
+    player       = pend.player,
+    discord_id   = discord_id,
+    discord_name = who,
+    text         = pend.player .. " linked to Discord user " .. who .. ".",
+  })
   rcon.print("Linked " .. pend.player .. " to Discord user " .. who .. ".")
 end)
 
@@ -337,6 +344,7 @@ commands.add_command("odb-discord-link", "Complete Discord account linking with 
   game.print("[color=114,137,218][Discord][/color] " .. player.name .. " linked to " .. who)
   write_event("odb.link_confirmed", {
     player       = player.name,
+    discord_id   = pend.discord_id,
     discord_name = who,
     text         = player.name .. " linked to Discord user " .. who .. ".",
   })
@@ -347,12 +355,14 @@ commands.add_command("odb-unlink", "Unlink your Discord account", function(cmd)
   local player = cmd.player_index and game.get_player(cmd.player_index)
   if not player then return end
   storage.odb.links = storage.odb.links or {}
-  if storage.odb.links[player.name] then
+  local existing_link = storage.odb.links[player.name]
+  if existing_link then
     storage.odb.links[player.name] = nil
     player.print("[Discord link] Your Discord account has been unlinked.")
     write_event("odb.link_removed", {
-      player = player.name,
-      text   = player.name .. " unlinked their Discord account.",
+      player     = player.name,
+      discord_id = existing_link.discord_id,
+      text       = player.name .. " unlinked their Discord account.",
     })
   else
     player.print("[Discord link] You weren't linked.")
@@ -369,7 +379,10 @@ commands.add_command("odb-unlink-discord", "Open Discord Bridge: unlink a Discor
   for player_name, link in pairs(storage.odb.links) do
     if link.discord_id == id then removed[#removed + 1] = player_name end
   end
-  for _, player_name in ipairs(removed) do storage.odb.links[player_name] = nil end
+  for _, player_name in ipairs(removed) do
+    storage.odb.links[player_name] = nil
+    write_event("odb.link_removed", { player = player_name, discord_id = id })
+  end
   if #removed > 0 then
     rcon.print("Unlinked: " .. table.concat(removed, ", "))
   else
@@ -383,8 +396,10 @@ commands.add_command("odb-unlink-player", "Open Discord Bridge: unlink a player 
   local name = cmd.parameter and cmd.parameter:match("^%s*(.-)%s*$")
   if not name or name == "" then rcon.print("ERROR: usage /odb-unlink-player <name>"); return end
   storage.odb.links = storage.odb.links or {}
-  if storage.odb.links[name] then
+  local pl = storage.odb.links[name]
+  if pl then
     storage.odb.links[name] = nil
+    write_event("odb.link_removed", { player = name, discord_id = pl.discord_id })
     rcon.print("Unlinked player " .. name .. ".")
   else
     rcon.print("Player " .. name .. " is not linked.")
@@ -395,10 +410,31 @@ end)
 commands.add_command("odb-unlink-all", "Open Discord Bridge: clear all links (RCON)", function(cmd)
   if cmd.player_index then return end
   storage.odb.links = storage.odb.links or {}
-  local n = 0
-  for _ in pairs(storage.odb.links) do n = n + 1 end
+  local removed = {}
+  for player_name, link in pairs(storage.odb.links) do
+    removed[#removed + 1] = { player = player_name, discord_id = link.discord_id }
+  end
   storage.odb.links = {}
-  rcon.print("Cleared " .. n .. " link(s).")
+  for _, r in ipairs(removed) do
+    write_event("odb.link_removed", { player = r.player, discord_id = r.discord_id })
+  end
+  rcon.print("Cleared " .. #removed .. " link(s).")
+end)
+
+-- /odb-set-link <player> <discord_id> <discord_name...> — RCON; restore a link without emitting
+-- an event. Called by the bridge on connection to repopulate the mod's session storage from
+-- the bridge's persistent links.json file.
+commands.add_command("odb-set-link", "Open Discord Bridge: restore a player link (RCON)", function(cmd)
+  if cmd.player_index then return end
+  local player_name, discord_id, discord_name =
+    string.match(cmd.parameter or "", "^(%S+)%s+(%S+)%s*(.*)$")
+  if not player_name then
+    rcon.print("ERROR: usage /odb-set-link <player> <discord_id> <name>")
+    return
+  end
+  storage.odb.links = storage.odb.links or {}
+  storage.odb.links[player_name] = { discord_id = discord_id, discord_name = discord_name }
+  rcon.print("OK")
 end)
 
 -- /odb-links — RCON; list all current links.

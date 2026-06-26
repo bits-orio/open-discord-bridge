@@ -7,13 +7,14 @@ import (
 	"fmt"
 	"hash/fnv"
 	"log"
+	"math/rand"
 	"net/http"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
-	"math/rand"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -105,6 +106,15 @@ func main() {
 	defer dc.Close()
 	log.Printf("bridge: connected to Discord; tailing %s", cfg.Factorio.EventsFile)
 
+	// Persistent links store: survives Factorio resets. Default path is links.json next to
+	// the config file; override with factorio.links_file or ODB_LINKS_FILE.
+	linksPath := cfg.Factorio.LinksFile
+	if linksPath == "" {
+		linksPath = filepath.Join(filepath.Dir(*cfgPath), "links.json")
+	}
+	ls := newLinksStore(linksPath)
+	ls.load()
+
 	// Channel topic status: enabled by default; set channel_topic_status: false to disable.
 	topicEnabled := cfg.Discord.ChannelTopicStatus == nil || *cfg.Discord.ChannelTopicStatus
 	primaryChannelID := cfg.Discord.Routes[0].ChannelID
@@ -168,6 +178,7 @@ func main() {
 		if sm != nil {
 			handleStatusEvent(sm, ev, joinEvent, leftEvent)
 		}
+		handleLinkEvent(ls, ev)
 		// Resolve @playerName mentions to Discord pings in chat messages.
 		if isChatEvent(ev.Event) {
 			if msg, ok := ev.Data["message"].(string); ok && msg != "" {
@@ -254,25 +265,26 @@ func main() {
 
 	// Watch the bridge↔Factorio link (RCON + mod handshake), update the channel topic,
 	// and optionally announce connect/disconnect transitions to Discord.
-	if cfg.Discord.AnnounceStatus || sm != nil {
-		go monitorConnection(ctx, rc, func(connected bool, st odbStatus) {
-			now := time.Now()
-			if sm != nil {
-				if connected {
-					sm.OnConnected(now, st.Players)
-				} else {
-					sm.OnDisconnected(now)
-				}
+	go monitorConnection(ctx, rc, func(connected bool, st odbStatus) {
+		now := time.Now()
+		if connected {
+			restoreLinks(rc, ls)
+		}
+		if sm != nil {
+			if connected {
+				sm.OnConnected(now, st.Players, st.Ticks)
+			} else {
+				sm.OnDisconnected(now)
 			}
-			if cfg.Discord.AnnounceStatus {
-				if connected {
-					emit(Event{Event: "bridge.established", Data: map[string]any{"version": st.ModVersion}})
-				} else {
-					emit(Event{Event: "bridge.disconnected"})
-				}
+		}
+		if cfg.Discord.AnnounceStatus {
+			if connected {
+				emit(Event{Event: "bridge.established", Data: map[string]any{"version": st.ModVersion}})
+			} else {
+				emit(Event{Event: "bridge.disconnected"})
 			}
-		})
-	}
+		}
+	})
 
 	// Open Control API (off by default).
 	if cfg.ControlAPI.Enabled {
@@ -567,6 +579,7 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 type odbStatus struct {
 	ModVersion string
 	Players    []string
+	Ticks      *uint64 // nil when the mod didn't report it (pre-0.1.4)
 }
 
 // queryODBStatus calls /odb-status and returns the parsed result.
@@ -579,23 +592,52 @@ func queryODBStatus(rc *rcon.Client) (odbStatus, bool) {
 	var raw struct {
 		ModVersion string          `json:"mod_version"`
 		Players    json.RawMessage `json:"players"`
+		Ticks      *uint64         `json:"ticks"`
 	}
 	if json.Unmarshal([]byte(resp), &raw) != nil || raw.ModVersion == "" {
 		return odbStatus{}, false
 	}
 	var players []string
 	_ = json.Unmarshal(raw.Players, &players) // {} -> nil (no players), [...] -> slice
-	return odbStatus{ModVersion: raw.ModVersion, Players: players}, true
+	return odbStatus{ModVersion: raw.ModVersion, Players: players, Ticks: raw.Ticks}, true
+}
+
+// handleLinkEvent updates the persistent links store on odb.link_confirmed/removed events.
+func handleLinkEvent(ls *linksStore, ev Event) {
+	switch ev.Event {
+	case "odb.link_confirmed":
+		player, discordID, discordName := str(ev.Data["player"]), str(ev.Data["discord_id"]), str(ev.Data["discord_name"])
+		if player != "" && discordID != "" {
+			ls.upsert(linkInfo{Player: player, DiscordID: discordID, DiscordName: discordName})
+		}
+	case "odb.link_removed":
+		if player := str(ev.Data["player"]); player != "" {
+			ls.removeByPlayer(player)
+		}
+	}
+}
+
+// restoreLinks pushes all stored links into the mod via /odb-set-link after a connection.
+func restoreLinks(rc *rcon.Client, ls *linksStore) {
+	for _, l := range ls.all() {
+		cmd := fmt.Sprintf("/odb-set-link %s %s %s", l.Player, l.DiscordID, l.DiscordName)
+		if _, err := rc.Execute(cmd); err != nil {
+			log.Printf("links: restore %s: %v", l.Player, err)
+		}
+	}
 }
 
 // handleStatusEvent feeds relevant JSONL events to the status manager.
+// It matches both the configured event names (default: vanilla.*) and the mts.*
+// equivalents so that MTS servers work without extra config — MTS disables the
+// vanilla baselines and emits its own player_joined/left with the same payload shape.
 func handleStatusEvent(sm *status.Manager, ev Event, joinEvent, leftEvent string) {
 	switch ev.Event {
-	case joinEvent:
+	case joinEvent, "mts.player_joined":
 		if name := str(ev.Data["player"]); name != "" {
 			sm.OnPlayerJoined(name)
 		}
-	case leftEvent:
+	case leftEvent, "mts.player_left":
 		if name := str(ev.Data["player"]); name != "" {
 			sm.OnPlayerLeft(name)
 		}

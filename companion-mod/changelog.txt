@@ -1,4 +1,23 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.5
+Date: 2026-06-05
+  Changes:
+    - odb.link_confirmed now includes discord_id field (required for bridge persistence).
+    - odb.link_removed now includes discord_id field.
+    - /odb-confirm-link now emits odb.link_confirmed (previously only the Discord-initiated
+      flow emitted this event).
+    - /odb-unlink-discord, /odb-unlink-player, and /odb-unlink-all now emit odb.link_removed
+      for each removed link so the bridge can keep its persistent store in sync.
+    - New /odb-set-link RCON command: silently restores a link into session storage without
+      emitting an event. Called by the bridge on connection to repopulate links from its
+      persistent links.json file after a Factorio reset.
+---------------------------------------------------------------------------------------------------
+Version: 0.1.4
+Date: 2026-06-05
+  Changes:
+    - /odb-status RCON response now includes game.tick so the bridge can display
+      actual map uptime in the channel topic instead of bridge connection time.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.3
 Date: 2026-06-03
   Features:
