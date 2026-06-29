@@ -35,9 +35,11 @@ Secrets are read from the env vars named in `bridge.yaml` (`token_env`,
 ## Run
 
 ```sh
-set -a; . ./.env; set +a      # load DISCORD_BOT_TOKEN + FACTORIO_RCON_PASSWORD
 ./odb-bridge -config bridge.yaml
 ```
+
+The bridge auto-loads `./.env` next to the config (`DISCORD_BOT_TOKEN` +
+`FACTORIO_RCON_PASSWORD`); variables already set in your environment take precedence.
 
 A successful start logs `connected to Discord; tailing <events_file>`.
 

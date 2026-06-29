@@ -12,16 +12,25 @@ with permission to add a bot to your server.
 
 ---
 
-## 1. Create the Discord bot
+## 1. Create and invite the Discord bot
 
 1. Go to the [Discord Developer Portal](https://discord.com/developers/applications) →
-   **New Application** → name it → **Bot** (left sidebar).
-2. **Reset Token** → copy the token somewhere safe. This is `DISCORD_BOT_TOKEN`.
-3. Scroll to **Privileged Gateway Intents** and turn on **Message Content Intent**.
-   ⚠️ The bridge can't read channel messages without this — it's the most common thing
-   people miss.
-
-(You'll add the bot to your server in step 4 — the wizard prints the invite link for you.)
+   **New Application** → name it.
+2. **Bot** (left sidebar) → **Reset Token** → copy it somewhere safe. This is your
+   `DISCORD_BOT_TOKEN`.
+3. On the same page, under **Privileged Gateway Intents**, turn on **Message Content
+   Intent**. ⚠️ The bridge can't read channel messages without this — the most common miss.
+4. **General Information** → copy the **Application ID**.
+5. **Invite the bot:** open this URL in a browser (replace `APP_ID`), pick your server, and
+   click **Authorize**:
+   ```
+   https://discord.com/oauth2/authorize?client_id=APP_ID&scope=bot%20applications.commands&permissions=402721808
+   ```
+   The wizard (§5) builds this link for you — this is the manual version for when you skip
+   the wizard (e.g. on a managed host).
+6. **Channel ID:** in Discord, **User Settings → Advanced → Developer Mode** on, then
+   right-click your target channel → **Copy Channel ID**. This is `ODB_DISCORD_CHANNEL_ID`
+   (or `discord.routes[].channel_id` in the file).
 
 ---
 
@@ -120,16 +129,17 @@ permissions *View Channels, Send Messages, Read Message History*.
 
 ## 6. Run the bridge
 
-The bridge reads secrets from the environment and **does not auto-load `.env`**, so source
-it first:
-
 ```sh
-set -a; . ./.env; set +a
 ./odb-bridge -config bridge.yaml
 ```
 
-You should see `bridge: connected to Discord; tailing …`. (Leave it running; use a service
-manager like `systemd` to keep it up — it stops cleanly on Ctrl-C / SIGTERM.)
+The bridge **auto-loads the `.env` next to your `bridge.yaml`** (the wizard wrote one there),
+so your token and passwords are picked up with no extra step. You should see
+`bridge: connected to Discord; tailing …`. (Leave it running; use a service manager like
+`systemd` to keep it up — it stops cleanly on Ctrl-C / SIGTERM.)
+
+> Secrets already exported in your shell, or injected by your host as environment variables?
+> Those take precedence over `.env`.
 
 ---
 

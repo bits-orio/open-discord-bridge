@@ -1,4 +1,18 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.7
+Date: 2026-06-29
+  Changes:
+    - Bridge now auto-loads a .env file sitting next to its -config file (the setup wizard
+      writes one there), so it starts without a separate "source the .env first" step. Real
+      environment variables still take precedence, so hosting panels that inject their own
+      variables are unaffected.
+    - Setup wizard's invite URL now also requests Manage Channels, so the bot can keep the
+      Discord channel topic in sync (on by default) without a manually-fixed invite link.
+    - Docs: QUICKSTART.md now has self-contained "create & invite the bot" steps (token,
+      Application ID, invite URL, channel ID) that don't require the wizard — for
+      managed-host users who configure by hand.
+    - No gameplay changes — the companion mod is functionally identical to 0.1.5.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.6
 Date: 2026-06-26
   Changes:

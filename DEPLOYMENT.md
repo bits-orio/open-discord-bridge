@@ -46,6 +46,10 @@ Used automatically when the config file is **absent**. Everything comes from env
 variables — ideal for containers and panels (Pterodactyl), where config is injected as
 env vars and no file is mounted.
 
+> Creating the Discord bot, getting its token, and inviting it to your server are the same
+> in every mode and don't require the wizard — see [QUICKSTART.md §1](QUICKSTART.md) for the
+> manual bot + invite-URL + channel-ID steps.
+
 | Variable | Meaning | Default |
 |---|---|---|
 | `ODB_TRANSPORT` | Transport: `local` or `sftp` | `local` |

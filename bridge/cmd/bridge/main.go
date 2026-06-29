@@ -41,6 +41,11 @@ func main() {
 	cfgPath := flag.String("config", "bridge.yaml", "path to config file")
 	flag.Parse()
 
+	// Load a .env sitting next to the config file (the setup wizard writes one there) so the
+	// bridge's secrets are available without the caller having to `source` it first. Real
+	// environment variables always win, so a hosting panel's injected vars take precedence.
+	loadDotEnv(filepath.Dir(*cfgPath))
+
 	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("config: %v", err)
