@@ -24,6 +24,11 @@ factorio:
 transport: local        # local | sftp  (inbound is always RCON)
 poll_interval: 1s
 
+# Also write the bridge's own logs to a file (in addition to stdout) — useful when stdout
+# isn't visible, e.g. a hosting panel that backgrounds the bridge. Defaults to bridge.log
+# next to the events file (local transport). Set to "-" to log to stdout only.
+# log_file: ${HOME}/factorio/script-output/open-discord-bridge/bridge.log
+
 discord:
   token_env: DISCORD_BOT_TOKEN
   guild_id: "000000000000000000"

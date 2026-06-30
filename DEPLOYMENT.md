@@ -54,6 +54,7 @@ env vars and no file is mounted.
 |---|---|---|
 | `ODB_TRANSPORT` | Transport: `local` or `sftp` | `local` |
 | `ODB_POLL_INTERVAL` | Local tailer poll interval | `1s` |
+| `ODB_LOG_FILE` | Also write logs to this file (`-` = stdout only) | `bridge.log` next to events (local) |
 | `ODB_RCON_ADDRESS` | Factorio RCON `host:port` | — (required) |
 | `FACTORIO_RCON_PASSWORD` | RCON password (**secret**) | — (required) |
 | `ODB_EVENTS_FILE` | Path to `events.jsonl` (supports `${ENV}` and `~/`) | — (required) |

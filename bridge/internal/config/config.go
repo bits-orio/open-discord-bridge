@@ -33,6 +33,7 @@ type Config struct {
 	Factorio     FactorioConfig   `yaml:"factorio"`
 	Transport    string           `yaml:"transport"`
 	PollInterval Duration         `yaml:"poll_interval"`
+	LogFile      string           `yaml:"log_file"` // also write logs here (default: bridge.log next to events; "-" = stderr only)
 	Discord      DiscordConfig    `yaml:"discord"`
 	ControlAPI   ControlAPIConfig `yaml:"control_api"`
 }
@@ -137,6 +138,7 @@ func Load(path string) (*Config, error) {
 	// portable and don't need to hardcode machine-specific values.
 	c.Factorio.EventsFile = expandPath(c.Factorio.EventsFile)
 	c.Factorio.RCON.Address = os.ExpandEnv(c.Factorio.RCON.Address)
+	c.LogFile = expandPath(c.LogFile)
 
 	if c.Transport == "" {
 		c.Transport = "local"
@@ -219,6 +221,7 @@ func (c *Config) validate() error {
 func LoadFromEnv() (*Config, error) {
 	c := &Config{
 		Transport: getenvDefault("ODB_TRANSPORT", "local"),
+		LogFile:   expandPath(os.Getenv("ODB_LOG_FILE")),
 		Factorio: FactorioConfig{
 			RCON: RCONConfig{
 				Address:     os.Getenv("ODB_RCON_ADDRESS"),

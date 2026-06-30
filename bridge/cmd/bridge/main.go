@@ -51,6 +51,10 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	// Tee logs to a file too, so the bridge is observable where stdout isn't surfaced (e.g.
+	// a panel that backgrounds it). Defaults to bridge.log next to the events file.
+	setupLogFile(cfg)
+
 	rt := router.New(toRouterRoutes(cfg.Discord.Routes))
 	rc := rcon.New(cfg.Factorio.RCON.Address, cfg.Factorio.RCON.Password)
 	defer rc.Close()

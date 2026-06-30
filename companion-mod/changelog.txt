@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.8
+Date: 2026-06-29
+  Changes:
+    - Bridge can now write its logs to a file (in addition to stdout), so it's observable on
+      hosts that background it and only surface files. Controlled by log_file / ODB_LOG_FILE;
+      defaults to bridge.log next to the events file (local transport). Set log_file to "-"
+      to log to stdout only.
+    - No gameplay changes — the companion mod is functionally identical to 0.1.5.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.7
 Date: 2026-06-29
   Changes:
