@@ -79,14 +79,10 @@ func main() {
 			}
 			return
 		}
-		payload, _ := json.Marshal(map[string]string{
-			"user":    msg.User,
-			"user_id": msg.UserID,
-			"message": msg.Message,
-			"channel": msg.ChannelID,
-		})
-		if _, err := rc.Execute("/odb-incoming " + string(payload)); err != nil {
-			log.Printf("rcon: inbound deliver failed: %v", err)
+		for _, cmd := range incomingCommands(msg.User, msg.UserID, msg.Message, msg.ChannelID) {
+			if _, err := rc.Execute(cmd); err != nil {
+				log.Printf("rcon: inbound deliver failed: %v", err)
+			}
 		}
 	}
 
