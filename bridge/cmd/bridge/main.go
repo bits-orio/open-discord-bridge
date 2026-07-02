@@ -921,7 +921,10 @@ func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string
 		return ""
 	}
 	if strings.TrimSpace(resp) != "" {
-		return "```\n" + resp + "\n```"
+		// Cap the inner text so the closing fence survives Post's outer content cap —
+		// otherwise a long RCON reply truncates mid-fence and renders unterminated.
+		const fenceOverhead = 8 // len("```\n") + len("\n```")
+		return "```\n" + discord.Truncate(resp, discord.MaxContentLen-fenceOverhead) + "\n```"
 	}
 	return ""
 }
