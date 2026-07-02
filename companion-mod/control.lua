@@ -47,23 +47,26 @@ end
 -- over RCON (achievement-safe; no /silent-command). We raise our own custom event so
 -- integrators can override delivery, then run a default "print to all" handler.
 
--- Discord message text and display names are untrusted: neutralize characters that could
--- forge a second chat line or spoof a sender (newlines) or invoke Factorio's chat rich-text
--- tags — [color=...], [img=...], [entity=...], etc. — when interpolated into game.print.
--- No sanitizer already existed in this file for free text reaching game.print; RCON command
--- args are sanitized separately by the bridge process before they ever reach here (see
--- interpolate/sanitizeArg in cmd/bridge/main.go), so this is the first such input on the mod
--- side.
+-- Discord message text and display names are untrusted: strip newlines and other control
+-- characters, which would otherwise forge a second chat line ("hi\nBob: gg" renders a fake
+-- line as Bob). Factorio rich-text tags ([color=...], [img=...], [entity=...]) are KEPT on
+-- purpose — they're a supported feature (https://wiki.factorio.com/rich_text), and in-game
+-- players can type them in chat anyway. After this filter a Discord message can express
+-- exactly what an in-game chat line can: tags yes, extra lines no.
+-- RCON command args are sanitized separately by the bridge process before they ever reach
+-- here (see interpolate/sanitizeArg in cmd/bridge/main.go).
 local function sanitize_for_chat(text)
   if type(text) ~= "string" then return text end
-  text = text:gsub("[\r\n]+", " ")
-  text = text:gsub("%[", "("):gsub("%]", ")")
-  return text
+  return text:gsub("%c+", " ")
 end
 
 local function handle_incoming(args)
   if type(args) ~= "table" then return end
 
+  -- Integrators receive the RAW user/message (they may need exact content, e.g. for
+  -- command parsing). Anything an integrator prints into game chat must strip newlines
+  -- like sanitize_for_chat does — raw Discord text can forge extra chat lines. (Rich-text
+  -- tags are a supported feature and need no stripping.)
   script.raise_event(on_incoming_event, {
     user       = args.user,
     user_id    = args.user_id,
@@ -303,7 +306,9 @@ commands.add_command("odb-confirm-link", "Open Discord Bridge: confirm a player 
   end
   storage.odb.links[pend.player] = { discord_id = discord_id, discord_name = discord_name }
   local who = (discord_name ~= "" and discord_name) or discord_id
-  game.print("[color=114,137,218][Discord][/color] " .. pend.player .. " linked to " .. who)
+  -- Discord display names are attacker-controlled: strip newlines at print time so a
+  -- name can't forge extra chat lines (rich-text tags render by design).
+  game.print("[color=114,137,218][Discord][/color] " .. pend.player .. " linked to " .. sanitize_for_chat(who))
   write_event("odb.link_confirmed", {
     player       = pend.player,
     discord_id   = discord_id,
@@ -355,7 +360,8 @@ commands.add_command("odb-discord-link", "Complete Discord account linking with 
   storage.odb.links = storage.odb.links or {}
   storage.odb.links[player.name] = { discord_id = pend.discord_id, discord_name = pend.discord_name }
   local who = (pend.discord_name ~= "" and pend.discord_name) or pend.discord_id
-  game.print("[color=114,137,218][Discord][/color] " .. player.name .. " linked to " .. who)
+  -- Same line-forgery guard as the /odb-confirm-link announcement above.
+  game.print("[color=114,137,218][Discord][/color] " .. player.name .. " linked to " .. sanitize_for_chat(who))
   write_event("odb.link_confirmed", {
     player       = player.name,
     discord_id   = pend.discord_id,
