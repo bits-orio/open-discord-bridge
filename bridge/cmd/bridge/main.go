@@ -426,7 +426,11 @@ func initiateDiscordLink(rc *rcon.Client, dc *discord.Client, msg discord.Inboun
 	dmText := fmt.Sprintf(":link: Run this command in Factorio to link your account (expires ~60s):\n```\n/odb-discord-link %s\n```", code)
 	if err := dc.SendDM(msg.UserID, dmText); err != nil {
 		log.Printf("discord-link: DM to %s failed (%v) — posting in channel", msg.UserID, err)
-		dc.Send(msg.ChannelID, fmt.Sprintf("<@%s> %s", msg.UserID, dmText))
+		// Deliberate, targeted ping: this is a bridge-authored fallback notifying the same
+		// user who ran !link that their DM bounced, not untrusted relayed content.
+		if err := dc.PostMentioning(msg.ChannelID, fmt.Sprintf("<@%s> %s", msg.UserID, dmText), msg.UserID); err != nil {
+			log.Printf("discord-link: fallback channel post to %s failed: %v", msg.ChannelID, err)
+		}
 	}
 }
 

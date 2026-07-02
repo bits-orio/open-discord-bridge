@@ -173,9 +173,21 @@ func (c *Client) Close() error {
 // Connected reports whether the gateway connection is currently open.
 func (c *Client) Connected() bool { return c.connected }
 
-// Post sends a message and returns any error.
+// noMentions parses no mentions at all — the safe default for any content that may embed
+// untrusted text (relayed game chat, RCON command output, a Discord display name, ...).
+// Without this, Discord parses @everyone/@here and role/user mentions out of the raw message
+// content, so a player typing "@everyone" in Factorio chat would relay as a live ping.
+var noMentions = &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMentionType{}}
+
+// Post sends a message with all mentions suppressed and returns any error. This is the
+// general-purpose send used for game-chat relay and bridge notifications alike; neither
+// should ping @everyone/@here/roles/users based on message content. Use PostMentioning for
+// the rare case of an intentional, specific ping.
 func (c *Client) Post(channelID, content string) error {
-	_, err := c.session.ChannelMessageSend(channelID, content)
+	_, err := c.session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content:         content,
+		AllowedMentions: noMentions,
+	})
 	return err
 }
 
@@ -184,6 +196,21 @@ func (c *Client) Send(channelID, content string) {
 	if err := c.Post(channelID, content); err != nil {
 		fmt.Printf("discord: send to %s failed: %v\n", channelID, err)
 	}
+}
+
+// PostMentioning sends a message that is allowed to ping exactly the given user IDs — for
+// the bridge's own intentional notifications (e.g. falling back to an in-channel mention
+// when a DM can't be delivered). @everyone/@here, roles, and any other user mentions stay
+// suppressed even if the content contains their syntax.
+func (c *Client) PostMentioning(channelID, content string, userIDs ...string) error {
+	_, err := c.session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
+		Content: content,
+		AllowedMentions: &discordgo.MessageAllowedMentions{
+			Parse: []discordgo.AllowedMentionType{},
+			Users: userIDs,
+		},
+	})
+	return err
 }
 
 // PermissionCheck describes what the bridge needs the bot to be able to do.
@@ -360,7 +387,10 @@ func (c *Client) SendDM(userID, content string) error {
 	if err != nil {
 		return err
 	}
-	_, err = c.session.ChannelMessageSend(ch.ID, content)
+	_, err = c.session.ChannelMessageSendComplex(ch.ID, &discordgo.MessageSend{
+		Content:         content,
+		AllowedMentions: noMentions,
+	})
 	return err
 }
 

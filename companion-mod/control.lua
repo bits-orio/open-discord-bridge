@@ -47,6 +47,20 @@ end
 -- over RCON (achievement-safe; no /silent-command). We raise our own custom event so
 -- integrators can override delivery, then run a default "print to all" handler.
 
+-- Discord message text and display names are untrusted: neutralize characters that could
+-- forge a second chat line or spoof a sender (newlines) or invoke Factorio's chat rich-text
+-- tags — [color=...], [img=...], [entity=...], etc. — when interpolated into game.print.
+-- No sanitizer already existed in this file for free text reaching game.print; RCON command
+-- args are sanitized separately by the bridge process before they ever reach here (see
+-- interpolate/sanitizeArg in cmd/bridge/main.go), so this is the first such input on the mod
+-- side.
+local function sanitize_for_chat(text)
+  if type(text) ~= "string" then return text end
+  text = text:gsub("[\r\n]+", " ")
+  text = text:gsub("%[", "("):gsub("%]", ")")
+  return text
+end
+
 local function handle_incoming(args)
   if type(args) ~= "table" then return end
 
@@ -60,8 +74,8 @@ local function handle_incoming(args)
 
   -- Default delivery. Integrators that subscribe to on_incoming may do their own
   -- (e.g. MTS routing into a specific team's chat) in addition to this.
-  local user = args.user or "Discord"
-  local msg  = args.message or ""
+  local user = sanitize_for_chat(args.user) or "Discord"
+  local msg  = sanitize_for_chat(args.message) or ""
 
   -- If this Discord user is linked to a player, tint their name with the player's
   -- in-game chat color so it reads like that player speaking.
