@@ -87,6 +87,10 @@ type Deps struct {
 	Restart   func()
 }
 
+// maxConfigBodyBytes caps the POST /v1/config request body — config payloads are a small
+// list of routes, so this is generous headroom against an oversized/malicious body.
+const maxConfigBodyBytes = 256 * 1024
+
 type Server struct {
 	listen string
 	token  string
@@ -108,7 +112,14 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("/v1/config", s.auth(s.handleConfig))
 	mux.HandleFunc("/v1/restart", s.auth(s.handleRestart))
 
-	s.srv = &http.Server{Addr: s.listen, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	s.srv = &http.Server{
+		Addr:              s.listen,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
 	go func() {
 		<-ctx.Done()
 		shutCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -203,6 +214,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			s.notImplemented(w, r)
 			return
 		}
+		r.Body = http.MaxBytesReader(w, r.Body, maxConfigBodyBytes)
 		var cfg Config
 		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
 			writeJSON(w, http.StatusBadRequest, errBody("invalid json: "+err.Error()))

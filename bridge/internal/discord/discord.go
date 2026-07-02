@@ -3,6 +3,7 @@ package discord
 import (
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/bwmarrin/discordgo"
 )
@@ -24,7 +25,7 @@ type InboundFunc func(InboundMessage)
 type Client struct {
 	session   *discordgo.Session
 	onMsg     InboundFunc
-	connected bool
+	connected atomic.Bool // updated from the gateway's Ready/Disconnect/Resumed events
 
 	mu      sync.RWMutex
 	inbound map[string]bool
@@ -67,7 +68,25 @@ func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, er
 	c := &Client{session: s, onMsg: onMsg, inbound: map[string]bool{}}
 	c.UpdateInbound(inboundChannels)
 	s.AddHandler(c.handleMessage)
+	s.AddHandler(c.handleReady)
+	s.AddHandler(c.handleResumed)
+	s.AddHandler(c.handleDisconnect)
 	return c, nil
+}
+
+// handleReady/handleResumed/handleDisconnect keep connected in sync with the actual gateway
+// state, rather than just "Open()/Close() were called" (which doesn't reflect drops and
+// reconnects that discordgo handles internally).
+func (c *Client) handleReady(_ *discordgo.Session, _ *discordgo.Ready) {
+	c.connected.Store(true)
+}
+
+func (c *Client) handleResumed(_ *discordgo.Session, _ *discordgo.Resumed) {
+	c.connected.Store(true)
+}
+
+func (c *Client) handleDisconnect(_ *discordgo.Session, _ *discordgo.Disconnect) {
+	c.connected.Store(false)
 }
 
 // UpdateInbound atomically replaces the set of channels relayed back into the game.
@@ -94,7 +113,6 @@ func (c *Client) Open() error {
 	if err := c.session.Open(); err != nil {
 		return err
 	}
-	c.connected = true
 	if len(c.slashSpecs) > 0 && c.guildID != "" {
 		if err := c.registerSlash(); err != nil {
 			fmt.Printf("discord: slash command registration failed: %v\n", err)
@@ -166,12 +184,14 @@ func (c *Client) handleInteraction(_ *discordgo.Session, i *discordgo.Interactio
 }
 
 func (c *Client) Close() error {
-	c.connected = false
-	return c.session.Close()
+	err := c.session.Close()
+	c.connected.Store(false)
+	return err
 }
 
-// Connected reports whether the gateway connection is currently open.
-func (c *Client) Connected() bool { return c.connected }
+// Connected reports whether the gateway connection is currently open. Safe for concurrent
+// use (the Control API's status endpoint reads it from a different goroutine).
+func (c *Client) Connected() bool { return c.connected.Load() }
 
 // noMentions parses no mentions at all — the safe default for any content that may embed
 // untrusted text (relayed game chat, RCON command output, a Discord display name, ...).
