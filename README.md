@@ -62,7 +62,10 @@ the companion-mod zip, and `bridge.yaml.example` from the
 [Releases](https://github.com/bits-orio/open-discord-bridge/releases) page, then follow the
 step-by-step **[QUICKSTART.md](QUICKSTART.md)**.
 
-**On a managed host (Pterodactyl / AleForge / …)?** You don't create a config file at all —
+**On AleForge?** Follow the illustrated **[AleForge setup guide](docs/aleforge/SETUP.md)**
+— bot creation to verified two-way chat in ~10–15 minutes, no coding required.
+
+**On another managed host (Pterodactyl / …)?** You don't create a config file at all —
 configure via panel variables (env-var mode). See [DEPLOYMENT.md](DEPLOYMENT.md).
 
 **From source (developers).** You need Go 1.23+ and a Factorio headless server:
@@ -81,6 +84,19 @@ Discord bot permissions: **View Channels, Send Messages, Read Message History**,
 if you use linked-player role/nickname — **Manage Roles + Manage Nicknames** (the bot's role
 must sit above the linked role). The bridge logs (and posts) a warning on startup if any are
 missing.
+
+## Hosted on AleForge — first-class integration
+
+> A big thank-you to **[AleForge](https://aleforge.net/factorio/)**, the first hosting
+> provider to ship Open Discord Bridge as a first-class integration. On their Factorio
+> servers the bridge is built into the panel: toggle it on, paste your bot token and
+> channel ID, reinstall — done. No shell, no config files. Special thanks to **Wraith**
+> from the AleForge team for the patience and the many rounds of debugging it took to get
+> the integration right end to end. Others will follow; AleForge was first.
+
+If your server runs on AleForge, the illustrated, screenshot-by-screenshot
+**[AleForge setup guide](docs/aleforge/SETUP.md)** takes you from "no bot" to verified
+two-way chat in about 10–15 minutes.
 
 ## Deployment
 
@@ -125,6 +141,7 @@ to inbound Discord messages, and the emoji/markdown rules — is documented in
 
 ## Docs
 
+- **[docs/aleforge/SETUP.md](docs/aleforge/SETUP.md)** — illustrated end-user setup guide for AleForge servers.
 - **[DEPLOYMENT.md](DEPLOYMENT.md)** — deployment models, env vars, control API, releasing.
 - **[companion-mod/README.md](companion-mod/README.md)** — the integrator API.
 - **[TESTING.md](TESTING.md)** — end-to-end verification checklist.
