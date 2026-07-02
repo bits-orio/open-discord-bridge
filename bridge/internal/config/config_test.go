@@ -102,3 +102,54 @@ func TestLoadFromEnvMissingTokenFails(t *testing.T) {
 		t.Fatal("expected error for missing Discord token")
 	}
 }
+
+// setSFTPEnv sets the common env vars for an sftp-transport, password-auth config, so
+// each SFTP validation test only needs to vary the known_hosts/opt-in combination.
+func setSFTPEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("ODB_TRANSPORT", "sftp")
+	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+	t.Setenv("ODB_EVENTS_FILE", "/remote/events.jsonl")
+	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
+	t.Setenv("ODB_SFTP_HOST", "game-host:22")
+	t.Setenv("ODB_SFTP_USER", "bridge")
+	t.Setenv("SFTP_PASSWORD", "sftp-secret")
+}
+
+func TestLoadFromEnvSFTPPasswordWithoutKnownHostsFails(t *testing.T) {
+	setSFTPEnv(t)
+	// No ODB_SFTP_KNOWN_HOSTS and no ODB_SFTP_ALLOW_INSECURE_HOST_KEY set: password auth
+	// with no host key verification and no explicit opt-in must fail startup rather than
+	// silently connecting insecurely.
+	if _, err := Load("/no/such/bridge.yaml"); err == nil {
+		t.Fatal("expected error: sftp password auth requires known_hosts_path or an explicit opt-in")
+	}
+}
+
+func TestLoadFromEnvSFTPPasswordWithKnownHostsSucceeds(t *testing.T) {
+	setSFTPEnv(t)
+	t.Setenv("ODB_SFTP_KNOWN_HOSTS", "/secrets/known_hosts")
+
+	c, err := Load("/no/such/bridge.yaml")
+	if err != nil {
+		t.Fatalf("known_hosts_path set: expected no error, got: %v", err)
+	}
+	if c.Factorio.SFTP.KnownHostsPath != "/secrets/known_hosts" {
+		t.Fatalf("known_hosts_path not resolved: %+v", c.Factorio.SFTP)
+	}
+}
+
+func TestLoadFromEnvSFTPPasswordWithOptInSucceeds(t *testing.T) {
+	setSFTPEnv(t)
+	t.Setenv("ODB_SFTP_ALLOW_INSECURE_HOST_KEY", "true")
+
+	c, err := Load("/no/such/bridge.yaml")
+	if err != nil {
+		t.Fatalf("opt-in flag set: expected no error, got: %v", err)
+	}
+	if !c.Factorio.SFTP.AllowInsecureHostKey {
+		t.Fatal("AllowInsecureHostKey not resolved from ODB_SFTP_ALLOW_INSECURE_HOST_KEY")
+	}
+}

@@ -77,10 +77,19 @@ env vars and no file is mounted.
 | `ODB_SFTP_USER` | SFTP user | — |
 | `ODB_SFTP_KEY_PATH` | Private key file for SFTP key auth | — |
 | `SFTP_PASSWORD` | SFTP password (**secret**; alternative to a key) | — |
-| `ODB_SFTP_KNOWN_HOSTS` | known_hosts file; omit to skip host-key check (logs a warning) | — |
+| `ODB_SFTP_KNOWN_HOSTS` | known_hosts file, verifies the remote host's identity | — |
+| `ODB_SFTP_ALLOW_INSECURE_HOST_KEY` | Explicitly accept connecting without `ODB_SFTP_KNOWN_HOSTS` (password auth only; see below) | `false` |
 
 Provide routes via **either** `ODB_DISCORD_CHANNEL_ID` (simple, one channel) **or**
 `ODB_ROUTES` (e.g. `vanilla.chat=111,mts.*=222,*=111`).
+
+> **SFTP + password auth requires `ODB_SFTP_KNOWN_HOSTS`.** Without host key
+> verification, a network attacker could MITM the connection and capture the SFTP
+> password on any reconnect, so the bridge refuses to start in that combination. Set
+> `ODB_SFTP_KNOWN_HOSTS` (recommended), or set `ODB_SFTP_ALLOW_INSECURE_HOST_KEY=true` to
+> explicitly accept the risk (e.g. on a trusted private network). Key-only SFTP auth is
+> unaffected — it keeps working with just a logged warning when `ODB_SFTP_KNOWN_HOSTS` is
+> unset, same as before.
 
 **Category label colors:** with `embed: true` (`ODB_EMBED`), integrator events (`mts.*`,
 `oarc.*`, …) render in an ANSI code block with just their `[ns → event]` category label

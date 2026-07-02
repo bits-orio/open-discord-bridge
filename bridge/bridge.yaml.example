@@ -19,7 +19,13 @@ factorio:
   #   user: factorio-bridge
   #   key_path: /secrets/bridge_ed25519     # or set a password via password_env
   #   password_env: SFTP_PASSWORD
-  #   known_hosts_path: /secrets/known_hosts # omit to skip host-key verification (logs a warning)
+  #   known_hosts_path: /secrets/known_hosts # verifies the remote host's identity
+  #   # If you use password auth (password_env) and skip known_hosts_path, the bridge
+  #   # refuses to start — without host key verification, a network attacker could MITM
+  #   # the connection and capture the SFTP password on any reconnect. Either set
+  #   # known_hosts_path above, or explicitly accept the risk (e.g. a trusted private
+  #   # network) by uncommenting the line below instead:
+  #   # allow_insecure_host_key: true
 
 transport: local        # local | sftp  (inbound is always RCON)
 poll_interval: 1s
