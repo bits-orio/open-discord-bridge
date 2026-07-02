@@ -25,11 +25,11 @@ func testServer() *Server {
 		GetConfig: func() Config {
 			return Config{Transport: "local", Discord: ConfigDiscord{Routes: []Route{{Source: "*", ChannelID: "1"}}}}
 		},
-		SetConfig: func(c Config) error {
+		SetConfig: func(c Config) (bool, error) {
 			if len(c.Discord.Routes) == 0 {
-				return errBodyErr("discord.routes must not be empty")
+				return false, errBodyErr("discord.routes must not be empty")
 			}
-			return nil
+			return true, nil
 		},
 		Restart: func() {},
 	})

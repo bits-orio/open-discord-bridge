@@ -78,13 +78,25 @@ type Route struct {
 // Deps are the bridge capabilities the API exposes. A nil func means the corresponding
 // endpoint reports 501 (Not Implemented).
 type Deps struct {
-	Status    func() Status
-	Guilds    func() ([]Guild, error)
-	Channels  func(guildID string) ([]Channel, error)
-	Test      func() TestResult
+	Status   func() Status
+	Guilds   func() ([]Guild, error)
+	Channels func(guildID string) ([]Channel, error)
+	Test     func() TestResult
+
 	GetConfig func() Config
-	SetConfig func(Config) error
-	Restart   func()
+	// SetConfig applies a config change and reports whether it was persisted to disk
+	// (false = applied live but memory-only until restart, e.g. env-var config mode or a
+	// write failure).
+	SetConfig func(Config) (persisted bool, err error)
+
+	Restart func()
+}
+
+// ConfigUpdateResult is the POST /v1/config response: the applied config plus whether the
+// change was written back to the config file or is memory-only until the next restart.
+type ConfigUpdateResult struct {
+	Config
+	Persisted bool `json:"persisted"`
 }
 
 type Server struct {
@@ -208,11 +220,13 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, errBody("invalid json: "+err.Error()))
 			return
 		}
-		if err := s.deps.SetConfig(cfg); err != nil {
+		persisted, err := s.deps.SetConfig(cfg)
+		if err != nil {
 			writeJSON(w, http.StatusBadRequest, errBody(err.Error()))
 			return
 		}
-		writeJSON(w, http.StatusOK, s.deps.GetConfig()) // echo the applied config
+		// Echo the applied config alongside whether it was written to disk.
+		writeJSON(w, http.StatusOK, ConfigUpdateResult{Config: s.deps.GetConfig(), Persisted: persisted})
 	default:
 		writeJSON(w, http.StatusMethodNotAllowed, errBody("method not allowed"))
 	}
