@@ -65,7 +65,7 @@ step-by-step **[QUICKSTART.md](QUICKSTART.md)**.
 **On a managed host (Pterodactyl / AleForge / …)?** You don't create a config file at all —
 configure via panel variables (env-var mode). See [DEPLOYMENT.md](DEPLOYMENT.md).
 
-**From source (developers).** You need Go 1.23+ and a Factorio headless server:
+**From source (developers).** You need Go 1.25+ and a Factorio headless server:
 
 ```sh
 ./install.sh     # builds the bridge, links the companion mod, writes server settings
@@ -77,7 +77,8 @@ Prefer to wire it by hand? Copy `bridge/bridge.yaml.example` → `bridge/bridge.
 `bridge/.env.example` → `bridge/.env` (token + RCON password go in `.env` — **never** in
 `bridge.yaml`), then `./start-bridge.sh`.
 
-Discord bot permissions: **View Channels, Send Messages, Read Message History**, and — only
+Discord bot permissions: **View Channels, Send Messages, Read Message History, Manage
+Channels** (the last one for the channel-topic status feature, on by default), and — only
 if you use linked-player role/nickname — **Manage Roles + Manage Nicknames** (the bot's role
 must sit above the linked role). The bridge logs (and posts) a warning on startup if any are
 missing.

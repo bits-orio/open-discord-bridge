@@ -14,8 +14,9 @@ services:
       - "34197:34197/udp"        # game
     volumes:
       - factorio:/factorio
-      # Companion mod — the dir name must be name_version from companion-mod/info.json.
-      - ./companion-mod:/factorio/mods/open-discord-bridge_0.1.0:ro
+      # Companion mod — Factorio also accepts a version-independent dir name (no version
+      # suffix required), so this doesn't need updating when companion-mod/info.json bumps.
+      - ./companion-mod:/factorio/mods/open-discord-bridge:ro
       # factoriotools reads the RCON password from this file. Create it with:
       #   mkdir -p .run && printf '%s' "$FACTORIO_RCON_PASSWORD" > .run/rconpw
       - ./.run/rconpw:/factorio/config/rconpw:ro

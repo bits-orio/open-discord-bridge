@@ -44,8 +44,8 @@ for _ in $(seq 1 60); do
 done
 
 # Run the bridge in the foreground; when it exits, the trap stops the server.
-# Default to bridge-local.yaml (local Factorio + local RCON) since this script
-# always starts a local server. Override via BRIDGE_CONFIG env var if needed.
-BRIDGE_CONFIG="${BRIDGE_CONFIG:-$REPO/bridge/bridge-local.yaml}"
+# Default to bridge.yaml, the config install.sh/the wizard actually write. Override via
+# BRIDGE_CONFIG env var (e.g. to bridge-local.yaml) if you keep a separate local preset.
+BRIDGE_CONFIG="${BRIDGE_CONFIG:-$REPO/bridge/bridge.yaml}"
 echo "Starting bridge (config: $BRIDGE_CONFIG) ..."
 ( cd "$REPO/bridge" && export RCON_PORT && ./odb-bridge -config "$BRIDGE_CONFIG" )

@@ -50,4 +50,17 @@ trap stop_bridge EXIT
 "$@" &
 FACTORIO_PID=$!
 trap 'kill -TERM "$FACTORIO_PID" 2>/dev/null || true' INT TERM
+
+# `wait` returns early (exit status >128) when interrupted by a caught signal, even though
+# the child is still shutting down/saving. Under `set -e` that would trip the EXIT trap and
+# tear down the bridge (and PID 1) before Factorio finishes. Keep waiting until the process
+# has actually exited.
+set +e
 wait "$FACTORIO_PID"
+FACTORIO_EXIT=$?
+while [[ $FACTORIO_EXIT -gt 128 ]] && kill -0 "$FACTORIO_PID" 2>/dev/null; do
+    wait "$FACTORIO_PID"
+    FACTORIO_EXIT=$?
+done
+set -e
+exit "$FACTORIO_EXIT"

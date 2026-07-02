@@ -58,11 +58,15 @@ env vars and no file is mounted.
 | `ODB_RCON_ADDRESS` | Factorio RCON `host:port` | — (required) |
 | `FACTORIO_RCON_PASSWORD` | RCON password (**secret**) | — (required) |
 | `ODB_EVENTS_FILE` | Path to `events.jsonl` (supports `${ENV}` and `~/`) | — (required) |
+| `ODB_LINKS_FILE` | Path to persist Discord↔player links (survives Factorio map resets) | `links.json` next to the config file |
 | `ODB_REQUIRED_MOD_VERSION` | Minimum mod version (surfaced in `/v1/status`) | — |
 | `DISCORD_BOT_TOKEN` | Discord bot token (**secret**) | — (required) |
-| `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID | — |
+| `ODB_DISCORD_GUILD_ID` | Discord server (guild) ID; required for slash commands and linked role/nickname | — |
 | `ODB_EMBED` | Color integrator-event category labels via an ANSI code block (see below) | `false` |
 | `ODB_ANNOUNCE_STATUS` | Post bridge↔Factorio connect/disconnect to Discord | `false` |
+| `ODB_CHANNEL_TOPIC_STATUS` | Keep the bridged channel's topic in sync with live server state (needs Manage Channels) | `true` |
+| `ODB_STATUS_PLAYER_JOINED_EVENT` | Event key that counts as a player join, for channel-topic status | `vanilla.player_joined` |
+| `ODB_STATUS_PLAYER_LEFT_EVENT` | Event key that counts as a player leave, for channel-topic status | `vanilla.player_left` |
 | `ODB_LINKED_ROLE_ID` | Discord role assigned to linked players | — |
 | `ODB_LINKED_NICKNAME` | Nickname format for linked members (`{factorio}`/`{discord}`) | — |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
@@ -70,6 +74,7 @@ env vars and no file is mounted.
 | `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` (public, single-line only) | — |
 | `ODB_ADMIN_ROLES` | Comma-separated admin role IDs | — |
 | `ODB_ADMIN_USERS` | Comma-separated admin user IDs | — |
+| `ODB_ADMIN_USE_DISCORD_PERMISSION` | Also treat Discord's Administrator permission as bridge-admin | `true` |
 | `ODB_CONTROL_API_ENABLED` | Enable the Control API | `false` |
 | `ODB_CONTROL_API_LISTEN` | Control API bind address | `127.0.0.1:7777` |
 | `BRIDGE_CONTROL_TOKEN` | Control API bearer token (**secret**, required if enabled) | — |
@@ -315,8 +320,9 @@ Reference artifacts:
   `Restart=always`, Docker/Pterodactyl restart policy) brings it back with fresh config.
 - **Permission preflight:** on connect, the bridge checks its Discord permissions for the
   configured features (Send/View/Read in each bridged channel, honoring channel overrides;
-  Manage Roles + role hierarchy and Manage Nicknames if linked role/nickname) and warns
-  about anything missing — in the logs and as a one-off message to the bridged channel.
+  Manage Channels if channel-topic status is on, which it is by default; Manage Roles + role
+  hierarchy and Manage Nicknames if linked role/nickname) and warns about anything missing —
+  in the logs and as a one-off message to the bridged channel.
 - **Connection announcements:** with `discord.announce_status` (or `ODB_ANNOUNCE_STATUS`),
   the bridge polls the RCON+mod handshake every ~15s and posts `bridge.established` /
   `bridge.disconnected` to Discord when the link to Factorio comes up or drops. They route

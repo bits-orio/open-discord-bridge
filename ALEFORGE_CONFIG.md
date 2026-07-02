@@ -61,7 +61,7 @@ and the env-var name are two encodings of the **same** setting — pick whicheve
 | **RCON password** 🔒 | `factorio.rcon.password_env` → secret | `FACTORIO_RCON_PASSWORD` | ✅ | secret; must match the Factorio server |
 | **RCON address** | `factorio.rcon.address` | `ODB_RCON_ADDRESS` | ✅ | `host:port`; loopback for the sidecar |
 | **Events file path** | `factorio.events_file` | `ODB_EVENTS_FILE` | ✅ | path to the mod's `events.jsonl` |
-| **Links file path** | `factorio.links_file` | `ODB_LINKS_FILE` | – | **persist on a volume** (see §7); default `links.json` next to the binary |
+| **Links file path** | `factorio.links_file` | `ODB_LINKS_FILE` | – | **persist on a volume** (see §7); default `links.json` next to the `-config` file (cwd if env-var mode with no `-config` flag) |
 | **Transport** | `transport` | `ODB_TRANSPORT` | – | `local` (default) or `sftp` |
 | **Poll interval** | `poll_interval` | `ODB_POLL_INTERVAL` | – | default `1s` |
 | **Discord guild (server) ID** | `discord.guild_id` | `ODB_DISCORD_GUILD_ID` | – | **required for** slash commands AND linked role/nickname (see §7) |
@@ -263,11 +263,12 @@ tickets:
 
 1. **File vs env-var mode is exclusive.** A `bridge.yaml` present at the `-config` path makes
    the bridge ignore every `ODB_*` var. Don't half-fill one and half-fill the other.
-2. **Account links persistence.** Links default to `links.json` *next to the binary*. If your
-   binary lives in the persistent server volume (`/home/container`), that's fine — they
-   persist across restarts. They're only lost if the binary lives somewhere ephemeral, or on
-   a panel "reinstall" that wipes the volume. If in doubt, set `factorio.links_file` /
-   `ODB_LINKS_FILE` to an explicit volume path.
+2. **Account links persistence.** Links default to `links.json` *next to the `-config` file*
+   (or the current working directory, if running in env-var mode with no `-config` flag —
+   see §8). If that directory lives in the persistent server volume (`/home/container`),
+   that's fine — they persist across restarts. They're only lost if the config/cwd lives
+   somewhere ephemeral, or on a panel "reinstall" that wipes the volume. If in doubt, set
+   `factorio.links_file` / `ODB_LINKS_FILE` to an explicit volume path.
 3. **Channel-topic status needs Manage Channels — and it's ON by default.** My wizard's invite
    URL does **not** request Manage Channels, so a bot invited that way will log a permission
    warning and fail to set the topic. Either add Manage Channels to the bot invite, or default

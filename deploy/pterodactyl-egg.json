@@ -65,6 +65,15 @@
       "rules": "required|string"
     },
     {
+      "name": "Discord guild ID",
+      "description": "Discord server (guild) ID. Required for slash commands and linked-player role/nickname sync.",
+      "env_variable": "ODB_DISCORD_GUILD_ID",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
       "name": "Discord channel ID",
       "description": "Catch-all channel for all events (shortcut). For per-event routing use ODB_ROUTES instead.",
       "env_variable": "ODB_DISCORD_CHANNEL_ID",
@@ -78,6 +87,42 @@
       "description": "Optional explicit routes: source=channel_id,source=channel_id (e.g. vanilla.chat=111,mts.*=222,*=111).",
       "env_variable": "ODB_ROUTES",
       "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Links file path",
+      "description": "Where to persist Discord↔player links (survives Factorio map resets). Point at a persistent volume path.",
+      "env_variable": "ODB_LINKS_FILE",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Channel-topic status",
+      "description": "Keep the bridged channel's topic in sync with live server state. On by default; needs Manage Channels.",
+      "env_variable": "ODB_CHANNEL_TOPIC_STATUS",
+      "default_value": "true",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|in:true,false"
+    },
+    {
+      "name": "Player joined event",
+      "description": "Event key that counts as a player join for channel-topic status.",
+      "env_variable": "ODB_STATUS_PLAYER_JOINED_EVENT",
+      "default_value": "vanilla.player_joined",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Player left event",
+      "description": "Event key that counts as a player leave for channel-topic status.",
+      "env_variable": "ODB_STATUS_PLAYER_LEFT_EVENT",
+      "default_value": "vanilla.player_left",
       "user_viewable": true,
       "user_editable": true,
       "rules": "nullable|string"
@@ -119,6 +164,15 @@
       "rules": "nullable|string"
     },
     {
+      "name": "SFTP password",
+      "description": "SFTP password, an alternative to a key (only when transport is sftp).",
+      "env_variable": "SFTP_PASSWORD",
+      "default_value": "",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
       "name": "Control API enabled",
       "description": "Serve the HTTP Control API (/v1/*).",
       "env_variable": "ODB_CONTROL_API_ENABLED",
@@ -153,6 +207,15 @@
       "user_viewable": true,
       "user_editable": true,
       "rules": "nullable|string"
+    },
+    {
+      "name": "Admins: use Discord permission",
+      "description": "Also treat anyone with Discord's Administrator permission as bridge-admin, in addition to the role/user lists above.",
+      "env_variable": "ODB_ADMIN_USE_DISCORD_PERMISSION",
+      "default_value": "true",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string|in:true,false"
     }
   ]
 }
