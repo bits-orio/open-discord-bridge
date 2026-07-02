@@ -104,9 +104,10 @@ Factorio rather than as a sidecar):
 | SFTP password 🔒 | `factorio.sftp.password_env` → secret | `SFTP_PASSWORD` | secret; alternative to a key |
 | SFTP known_hosts | `factorio.sftp.known_hosts_path` | `ODB_SFTP_KNOWN_HOSTS` | omit to skip host-key check (logs a warning) |
 
-> **The shipped `pterodactyl-egg.json` is a deliberate subset** — it wires only ~14 of these
+> **The shipped `pterodactyl-egg.json` is a deliberate subset** — it wires only ~16 of these
 > variables (token, RCON pw/addr, events file, channel, routes, transport, SFTP host/user/key,
-> control-API enable/token, admin roles/users). It does **not** include `ODB_DISCORD_GUILD_ID`,
+> control-API enable/token, admin roles/users, config mode `ODB_CONFIG=none`, built-in
+> commands toggle `ODB_DEFAULT_COMMANDS`). It does **not** include `ODB_DISCORD_GUILD_ID`,
 > `ODB_EMBED`, `ODB_ANNOUNCE_STATUS`, `ODB_CHANNEL_TOPIC_STATUS`, `ODB_LINKED_*`,
 > `ODB_POLL_INTERVAL`, `ODB_COMMANDS`, `SFTP_PASSWORD`, `ODB_SFTP_KNOWN_HOSTS`, or
 > `ODB_CONTROL_API_LISTEN`. If you want those features in env-var mode, add the variables

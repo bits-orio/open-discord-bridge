@@ -29,6 +29,24 @@
   },
   "variables": [
     {
+      "name": "Config mode",
+      "description": "'none' forces env-var mode: the bridge ignores any bridge.yaml, so a stray or panel-written file can never disable these variables. Clear it only to use a hand-written bridge.yaml.",
+      "env_variable": "ODB_CONFIG",
+      "default_value": "none",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "nullable|string"
+    },
+    {
+      "name": "Built-in commands",
+      "description": "Ship the built-in Discord command set (!players + account linking: !link, !unlink, admin !links/!unlink-player/!unlink-all).",
+      "env_variable": "ODB_DEFAULT_COMMANDS",
+      "default_value": "true",
+      "user_viewable": true,
+      "user_editable": true,
+      "rules": "required|string|in:true,false"
+    },
+    {
       "name": "Discord bot token",
       "description": "Bot token from the Discord developer portal.",
       "env_variable": "DISCORD_BOT_TOKEN",

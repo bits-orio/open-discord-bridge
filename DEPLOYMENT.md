@@ -150,6 +150,28 @@ discord:
         rcon.print("removed " .. n)
 ```
 
+**Command properties — what's available and when to use it:**
+
+| Property | What it does | Default | Recommendation |
+|---|---|---|---|
+| `trigger` | First word of a Discord message that invokes the command (e.g. `!players`). | required | Prefix with `!` so ordinary chat can't collide with a trigger. |
+| `rcon` | The RCON command sent to Factorio; the reply is posted back to the channel. May be multiline — a whole `/silent-command` Lua script sent as one call. | required | Anything with side effects belongs behind `admin: true`. |
+| `admin` | Restricts the command to Discord admins (see "Who is admin" below). | `false` | Set on every destructive or state-changing command: kick/ban, unlink-all, scripts. A public command is runnable by *anyone who can post in the bridged channel*. |
+| `args` | Interpolates the user's message into `rcon`: `{args}` (everything after the trigger), `{1}`/`{2}`/… (positional words), `{user}` (sender's name), `{userid}` (sender's Discord ID). Input is sanitized (control chars stripped, length-capped) so it can't inject a second RCON command. | `false` | Combine with `admin: true` unless the RCON command is harmless — a template like `/silent-command {args}` hands the user raw Lua. |
+| `usage_hint` | Custom help text shown when an `args` command is invoked without its required arguments. | generic "Usage:" text | Set it on any `args` command customers touch — e.g. `"!link CODE — get CODE by running /odb-link in-game"`. |
+| `discord_link` | On the bare trigger (no code typed), starts the reverse Discord→game linking flow: the bot DMs the player an in-game command instead of erroring. | `false` | Only meaningful on your `!link` command; leave it off elsewhere. |
+
+Recommendations that follow from how these compose:
+- **Built-ins are the reference:** the env-var-mode default set (`!players` + linking
+  family) uses these properties correctly — mirror it when writing your own.
+- **Overriding a built-in via `ODB_COMMANDS` replaces it *entirely*, flags included.**
+  `ODB_COMMANDS` can only express public/single-line/no-args commands, so overriding
+  `!unlink-all` that way silently makes it public, and overriding `!link` breaks its
+  `{1}`/`{userid}` interpolation. To customize built-ins, use file mode (full properties)
+  or set `ODB_DEFAULT_COMMANDS=false` and define the set you actually want.
+- **Check what's live:** `bridge.effective.yaml` lists every active command with its
+  resolved flags — read it before assuming what a server exposes.
+
 **Who is admin** (checked in order): the author's user ID is in `admins.users`; or they
 hold a role in `admins.roles`; or — unless `use_discord_permission: false` — they have
 Discord's **Administrator** permission. So in the common case (Discord admins = your
