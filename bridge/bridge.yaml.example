@@ -10,7 +10,8 @@ factorio:
   events_file: ${HOME}/factorio/script-output/open-discord-bridge/events.jsonl
 
   # Where the bridge persists Discord↔player links (survives Factorio map resets). Defaults
-  # to links.json next to the binary; set a stable path if that dir isn't persistent.
+  # to links.json next to this config file (the -config path's directory); set a stable
+  # path if that dir isn't persistent.
   # links_file: ${HOME}/factorio/script-output/open-discord-bridge/links.json
 
   # Only used when transport is "sftp" (bridge on separate infra from Factorio).

@@ -41,7 +41,7 @@ type Config struct {
 type FactorioConfig struct {
 	RCON               RCONConfig `yaml:"rcon"`
 	EventsFile         string     `yaml:"events_file"`  // local path, or remote path for sftp
-	LinksFile          string     `yaml:"links_file"`   // local path for persistent links (default: links.json next to binary)
+	LinksFile          string     `yaml:"links_file"`   // local path for persistent links (default: links.json next to the -config file)
 	RequiredModVersion string     `yaml:"required_mod_version"`
 	SFTP               SFTPConfig `yaml:"sftp"`
 }
