@@ -17,6 +17,19 @@ code.
 
 [mts]: https://github.com/bits-orio/multi-team-support
 
+## Hosted on AleForge — first-class integration
+
+> A big thank-you to **[AleForge](https://aleforge.net/factorio/)**, the first hosting
+> provider to ship Open Discord Bridge as a first-class integration. On their Factorio
+> servers the bridge is built into the panel: toggle it on, paste your bot token and
+> channel ID, reinstall — done. No shell, no config files. Special thanks to **Wraith**
+> from the AleForge team for the patience and the many rounds of debugging it took to get
+> the integration right end to end. Others will follow; AleForge was first.
+
+If your server runs on AleForge, the illustrated, screenshot-by-screenshot
+**[AleForge setup guide](docs/aleforge/SETUP.md)** takes you from "no bot" to verified
+two-way chat in about 10–15 minutes.
+
 ## Features
 
 - **Two-way chat** — game chat → Discord, Discord → game (over RCON, achievement-safe).
@@ -84,19 +97,6 @@ Discord bot permissions: **View Channels, Send Messages, Read Message History**,
 if you use linked-player role/nickname — **Manage Roles + Manage Nicknames** (the bot's role
 must sit above the linked role). The bridge logs (and posts) a warning on startup if any are
 missing.
-
-## Hosted on AleForge — first-class integration
-
-> A big thank-you to **[AleForge](https://aleforge.net/factorio/)**, the first hosting
-> provider to ship Open Discord Bridge as a first-class integration. On their Factorio
-> servers the bridge is built into the panel: toggle it on, paste your bot token and
-> channel ID, reinstall — done. No shell, no config files. Special thanks to **Wraith**
-> from the AleForge team for the patience and the many rounds of debugging it took to get
-> the integration right end to end. Others will follow; AleForge was first.
-
-If your server runs on AleForge, the illustrated, screenshot-by-screenshot
-**[AleForge setup guide](docs/aleforge/SETUP.md)** takes you from "no bot" to verified
-two-way chat in about 10–15 minutes.
 
 ## Deployment
 
