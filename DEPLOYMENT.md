@@ -208,6 +208,14 @@ reads the mod's `events.jsonl`:
 When Factorio and the bridge are on different hosts/containers, set `ODB_RCON_ADDRESS`
 (or `factorio.rcon.address`) to the Factorio server's network address — not `127.0.0.1`.
 
+> **⚠️ RCON is plaintext.** Factorio's RCON protocol is not encrypted, and neither is the
+> password exchanged on connect. If `ODB_RCON_ADDRESS` points anywhere other than
+> `127.0.0.1`/a private network, that traffic — including the RCON password on every
+> connect — is readable to anyone on the path between the two hosts. **Never point it at a
+> public IP directly.** Put an **SSH tunnel** or **VPN** (WireGuard, Tailscale, etc.)
+> between the bridge and Factorio hosts instead, and keep `ODB_RCON_ADDRESS` pointed at the
+> tunnel's local end (typically `127.0.0.1:<port>`). See §6 Security below.
+
 ---
 
 ## 4. Deployment methods
@@ -276,7 +284,9 @@ See [`docker-compose.yml`](docker-compose.yml).
 ### D. Bridge-only container (Factorio elsewhere)
 The bridge is containerized; Factorio runs on another host/container.
 
-- RCON: `ODB_RCON_ADDRESS=game-host:27015` (reachable over the network).
+- RCON: `ODB_RCON_ADDRESS=game-host:27015` (reachable over the network). **⚠️ Don't point
+  this at a bare public IP** — RCON is plaintext (see §6 Security). Set up an SSH tunnel or
+  VPN between the two hosts and point `ODB_RCON_ADDRESS` at the tunnel's local end instead.
 - Events: either bind-mount Factorio's data dir read-only (shared-mount → Local), or set
   `ODB_TRANSPORT=sftp` with `ODB_SFTP_HOST`/`ODB_SFTP_USER`/`ODB_SFTP_KEY_PATH`.
 
@@ -330,7 +340,14 @@ Reference artifacts:
 - Secrets only via environment variables — never in `bridge.yaml` or the image.
 - Control API requires a bearer token; bind it to loopback (or a private network) and
   front it with TLS if exposed.
-- Keep RCON off the public internet (loopback, private network, or tunnel).
+- **RCON is plaintext — never run it over the public internet.** Factorio's RCON protocol
+  has no transport encryption, so both the password and every command/response are
+  readable to anyone who can observe the connection. This matters most in **split
+  setups** (bridge and Factorio on different hosts, e.g. §4.D): always put an **SSH
+  tunnel** or **VPN** (WireGuard, Tailscale, etc.) between the two hosts and connect
+  `ODB_RCON_ADDRESS`/`factorio.rcon.address` to the tunnel's local endpoint
+  (`127.0.0.1:<port>`) — never to a bare public IP. Loopback (same host) and private/VPN
+  networks are fine as-is.
 
 ### Command access model
 - **Inbound Discord chat is never run as a game command** — only a message whose first
