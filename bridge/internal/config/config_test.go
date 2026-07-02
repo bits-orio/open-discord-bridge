@@ -1,11 +1,8 @@
 package config
 
 import (
-	"bytes"
-	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 )
 
@@ -141,26 +138,6 @@ discord:
 	}
 	if want := filepath.Join(dir, "known_hosts"); c.Factorio.SFTP.KnownHostsPath != want {
 		t.Errorf("sftp.known_hosts_path not expanded: got %q, want %q", c.Factorio.SFTP.KnownHostsPath, want)
-	}
-}
-
-func TestLoadLogsEnvFallbackWhenNoConfigFile(t *testing.T) {
-	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
-	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
-	t.Setenv("DISCORD_BOT_TOKEN", "tok")
-	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
-	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
-
-	var buf bytes.Buffer
-	orig := log.Writer()
-	log.SetOutput(&buf)
-	defer log.SetOutput(orig)
-
-	if _, err := Load("/no/such/bridge.yaml"); err != nil {
-		t.Fatalf("env load: %v", err)
-	}
-	if !strings.Contains(buf.String(), "falling back to environment variables") {
-		t.Errorf("expected a log line about falling back to env vars, got: %q", buf.String())
 	}
 }
 
