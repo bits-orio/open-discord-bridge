@@ -1,4 +1,29 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.10
+Date: 2026-07-02
+  Changes:
+    - Security: Discord-to-game chat can no longer forge extra chat lines via newlines in the
+      message or the sender's display name. Factorio rich-text tags ([color=], [img=], [item=])
+      still render on purpose - after filtering, a Discord message can express exactly what an
+      in-game chat line can.
+    - Security: game-to-Discord relay no longer pings @everyone/@here/roles/users from message
+      content. Intentional pings still work: linked-player @name mentions and the !link DM
+      fallback use an explicit per-user allowlist.
+    - Security: link restore after reconnect sanitizes RCON arguments, so a tampered links.json
+      can no longer inject console commands.
+    - Outgoing Discord messages are capped at 2000 chars with visible truncation instead of a
+      silently dropped HTTP 400; long Discord-to-game messages are split across RCON calls
+      instead of vanishing; an oversized/empty RCON command no longer tears down a healthy
+      connection.
+    - Companion mod: link codes generated int32-safely (fixes potential /odb-link crash),
+      expired pending link codes are purged, only the server writes events.jsonl, server
+      console chat is relayed to Discord as "Server", game_started fires on first player join
+      (works on paused headless servers), vanilla.rocket_launched is rate-limited to one per
+      force per 60s, and linked_discord_id no longer crashes when called before storage init.
+    - Robustness: ${ENV}/~ expansion for links_file and SFTP paths, case-insensitive @mention
+      resolution, rune-safe nickname truncation, links.json fsync before rename, Control API
+      timeouts and request body limit, permission monitor retries after an initial error.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.9
 Date: 2026-07-02
   Changes:
