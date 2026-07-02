@@ -235,15 +235,14 @@ end)
 
 local LINK_TTL_TICKS = 60 * 60 -- ~60 seconds
 local CODE_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-local CODE_SPACE = 2176782336 -- 36^6
-
+-- Six independent draws rather than one math.random(0, 36^6-1): Factorio's API types
+-- math.random bounds as a signed 32-bit int, and 36^6-1 (2,176,782,335) exceeds that.
+-- Entropy is identical (36^6), and the per-character draw stays well inside int range.
 local function make_link_code()
-  local mixed = math.random(0, CODE_SPACE - 1)
   local code = ""
   for _ = 1, 6 do
-    local r = mixed % 36
-    code = string.sub(CODE_CHARS, r + 1, r + 1) .. code
-    mixed = math.floor(mixed / 36)
+    local r = math.random(1, #CODE_CHARS)
+    code = code .. string.sub(CODE_CHARS, r, r)
   end
   return code
 end
