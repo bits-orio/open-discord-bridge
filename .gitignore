@@ -18,3 +18,6 @@
 
 # Git worktrees for feature branches
 /.worktrees/
+
+# Effective-config snapshot the bridge writes at startup (inspection only)
+bridge.effective.yaml

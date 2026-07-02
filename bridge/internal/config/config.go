@@ -29,6 +29,10 @@ func (d *Duration) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
+func (d Duration) MarshalYAML() (any, error) {
+	return time.Duration(d).String(), nil
+}
+
 type Config struct {
 	Factorio     FactorioConfig   `yaml:"factorio"`
 	Transport    string           `yaml:"transport"`
@@ -117,11 +121,13 @@ type Command struct {
 	DiscordLink  bool   `yaml:"discord_link"`  // when typed with no code, initiate the Discord→game reverse linking flow
 }
 
-// Load reads and validates configuration. If the config file is absent, it builds the
-// config entirely from environment variables (env-var config mode) — see LoadFromEnv.
+// Load reads and validates configuration. If the config file is absent — or env-var mode
+// is forced with ODB_CONFIG=none — it builds the config entirely from environment
+// variables (env-var config mode) — see LoadFromEnv.
 func Load(path string) (*Config, error) {
-	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		return LoadFromEnv()
+	_, statErr := os.Stat(path)
+	if forced := strings.EqualFold(os.Getenv("ODB_CONFIG"), "none"); forced || errors.Is(statErr, fs.ErrNotExist) {
+		return loadFromEnv(Meta{Mode: "env", ConfigPath: path, Forced: forced && statErr == nil})
 	}
 
 	b, err := os.ReadFile(path)
@@ -164,10 +170,7 @@ func Load(path string) (*Config, error) {
 		c.ControlAPI.Listen = "127.0.0.1:7777"
 	}
 
-	if err := c.validate(); err != nil {
-		return nil, err
-	}
-	return &c, nil
+	return finish(&c, Meta{Mode: "file", ConfigPath: path, Warnings: unknownKeyWarnings(b)})
 }
 
 func (c *Config) validate() error {
@@ -215,10 +218,14 @@ func (c *Config) validate() error {
 }
 
 // LoadFromEnv builds config entirely from environment variables — used when no config
-// file is present (containers, panels like Pterodactyl). Non-secret settings use ODB_*
-// vars; secrets reuse the same names as file mode (DISCORD_BOT_TOKEN,
-// FACTORIO_RCON_PASSWORD, BRIDGE_CONTROL_TOKEN).
+// file is present (containers, panels like Pterodactyl) or when ODB_CONFIG=none forces
+// it. Non-secret settings use ODB_* vars; secrets reuse the same names as file mode
+// (DISCORD_BOT_TOKEN, FACTORIO_RCON_PASSWORD, BRIDGE_CONTROL_TOKEN).
 func LoadFromEnv() (*Config, error) {
+	return loadFromEnv(Meta{Mode: "env"})
+}
+
+func loadFromEnv(m Meta) (*Config, error) {
 	c := &Config{
 		Transport: getenvDefault("ODB_TRANSPORT", "local"),
 		LogFile:   expandPath(os.Getenv("ODB_LOG_FILE")),
@@ -291,10 +298,7 @@ func LoadFromEnv() (*Config, error) {
 		c.ControlAPI.Listen = "127.0.0.1:7777"
 	}
 
-	if err := c.validate(); err != nil {
-		return nil, err
-	}
-	return c, nil
+	return finish(c, m)
 }
 
 // routesFromEnv parses ODB_ROUTES ("source=channel_id,source=channel_id"), or falls back

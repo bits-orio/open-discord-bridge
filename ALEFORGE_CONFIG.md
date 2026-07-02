@@ -41,6 +41,17 @@ exists** at the path it's pointed at:
 > are in *file mode* and the panel variables do nothing. Pick one mode deliberately: either
 > write the file (and put everything in it), or make sure no file exists at that path and
 > drive it entirely from env vars.
+>
+> Running env-var mode? Set **`ODB_CONFIG=none`** in the startup env. It forces env-var
+> mode even if a `bridge.yaml` appears (e.g. recreated by a panel config-file processor),
+> so a stray file can never silently flip the bridge into file mode.
+
+**Debugging aid:** at every startup — including failed ones — the bridge writes
+`bridge.effective.yaml` next to the binary (`/home/container/`): the fully-resolved config
+it actually used, with a header stating the mode (file vs env-var), the validation result,
+each secret's status (`SET (n chars)` / `MISSING` — names only, never values), and warnings
+for unknown config keys (e.g. values injected at a wrong key path). It's output only, never
+read back. Point support tickets at this file first.
 
 **Secrets are never in the YAML, in either mode.** The YAML only names the env var to read
 (`token_env: DISCORD_BOT_TOKEN`); the actual secret is supplied as an environment variable.

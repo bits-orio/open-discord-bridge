@@ -1,5 +1,11 @@
 # Open Discord Bridge — example config (MVP, Local transport only).
 # Copy to bridge.yaml and edit. Secrets come from env vars, never this file.
+#
+# ⚠️ This is a TEMPLATE with placeholder values (ports, channel IDs). Do NOT deploy it
+# verbatim as a live bridge.yaml: its mere presence switches the bridge into file mode,
+# which ignores ALL ODB_* environment variables. Panels/hosts driving the bridge via env
+# vars should ship NO bridge.yaml at all (and can set ODB_CONFIG=none to force env-var
+# mode even if a stray file appears).
 
 factorio:
   rcon:

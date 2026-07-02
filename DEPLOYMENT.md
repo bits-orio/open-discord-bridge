@@ -46,12 +46,25 @@ Used automatically when the config file is **absent**. Everything comes from env
 variables — ideal for containers and panels (Pterodactyl), where config is injected as
 env vars and no file is mounted.
 
+Set `ODB_CONFIG=none` to **force** env-var mode even when a `bridge.yaml` exists — use
+this when something outside your control (e.g. a panel's config-file processor) keeps
+creating one that would otherwise switch the bridge into file mode.
+
+### Inspecting what the bridge resolved
+At every startup — including when it refuses to start — the bridge writes
+`bridge.effective.yaml` to its working directory: the fully-resolved config it is
+actually using, plus a header stating the config mode, the validation result, each
+secret's status (`SET (n chars)` / `MISSING` — env-var names only, never values), and
+warnings for unknown config keys. It is output only, never read back. When a setup
+misbehaves, read this file first.
+
 > Creating the Discord bot, getting its token, and inviting it to your server are the same
 > in every mode and don't require the wizard — see [QUICKSTART.md §1](QUICKSTART.md) for the
 > manual bot + invite-URL + channel-ID steps.
 
 | Variable | Meaning | Default |
 |---|---|---|
+| `ODB_CONFIG` | `none` = force env-var mode, ignore any `bridge.yaml` | — |
 | `ODB_TRANSPORT` | Transport: `local` or `sftp` | `local` |
 | `ODB_POLL_INTERVAL` | Local tailer poll interval | `1s` |
 | `ODB_LOG_FILE` | Also write logs to this file (`-` = stdout only) | `bridge.log` next to events (local) |
