@@ -292,6 +292,11 @@ func loadFromEnv(m Meta) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Env-var mode ships the built-in command set (ODB_DEFAULT_COMMANDS=false to opt
+	// out); ODB_COMMANDS entries with the same trigger replace the built-in one.
+	if v, err := strconv.ParseBool(os.Getenv("ODB_DEFAULT_COMMANDS")); v || err != nil {
+		cmds = mergeDefaultCommands(cmds)
+	}
 	c.Discord.Commands = cmds
 
 	if c.ControlAPI.Enabled && c.ControlAPI.Listen == "" {
@@ -323,6 +328,38 @@ func routesFromEnv() ([]Route, error) {
 		return []Route{{Source: "*", ChannelID: ch}}, nil
 	}
 	return nil, nil // validate reports the empty-routes error
+}
+
+// defaultCommands is the built-in env-var-mode command set: !players plus the
+// account-linking family. The linking commands are the bridge's own protocol (exact
+// placeholders and admin gating matter), so integrators get them wired correctly
+// instead of hand-copying them from bridge.yaml.example. Moderation commands (!kick
+// etc.) are deliberately excluded — those are the host's explicit choice.
+func defaultCommands() []Command {
+	return []Command{
+		{Trigger: "!players", Rcon: "/players online"},
+		{Trigger: "!link", Args: true, Rcon: "/odb-confirm-link {1} {userid} {user}"},
+		{Trigger: "!unlink", Args: true, Rcon: "/odb-unlink-discord {userid}"},
+		{Trigger: "!links", Admin: true, Rcon: "/odb-links"},
+		{Trigger: "!unlink-player", Admin: true, Args: true, Rcon: "/odb-unlink-player {args}"},
+		{Trigger: "!unlink-all", Admin: true, Rcon: "/odb-unlink-all"},
+	}
+}
+
+// mergeDefaultCommands appends each built-in command unless an explicit ODB_COMMANDS
+// entry already claims its trigger.
+func mergeDefaultCommands(explicit []Command) []Command {
+	claimed := make(map[string]bool, len(explicit))
+	for _, c := range explicit {
+		claimed[c.Trigger] = true
+	}
+	merged := explicit
+	for _, d := range defaultCommands() {
+		if !claimed[d.Trigger] {
+			merged = append(merged, d)
+		}
+	}
+	return merged
 }
 
 // commandsFromEnv parses ODB_COMMANDS ("!trigger=/rcon command;!t2=/cmd2").

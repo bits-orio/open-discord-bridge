@@ -78,6 +78,7 @@ and the env-var name are two encodings of the **same** setting — pick whicheve
 | **Discord guild (server) ID** | `discord.guild_id` | `ODB_DISCORD_GUILD_ID` | – | **required for** slash commands AND linked role/nickname (see §7) |
 | **Channel ID** (single channel) | `discord.routes` (one `*` route) | `ODB_DISCORD_CHANNEL_ID` | ✅* | the simple "everything → one channel" case |
 | **Routes** (per-source channels) | `discord.routes` | `ODB_ROUTES` | ✅* | `vanilla.chat=111,mts.*=222,*=111`; **order matters** (see §7) |
+| **Built-in commands** | `discord.commands` (copied from example) | `ODB_DEFAULT_COMMANDS` | – | default **on** (env mode): `!players` + full linking family, correctly gated |
 | **Color event labels** | `discord.embed` | `ODB_EMBED` | – | default `false` |
 | **Announce connect/disconnect** | `discord.announce_status` | `ODB_ANNOUNCE_STATUS` | – | default `false` |
 | **Live channel-topic status** | `discord.channel_topic_status` | `ODB_CHANNEL_TOPIC_STATUS` | – | **ON by default; needs Manage Channels** (see §7) |
@@ -109,8 +110,9 @@ Factorio rather than as a sidecar):
 > `ODB_EMBED`, `ODB_ANNOUNCE_STATUS`, `ODB_CHANNEL_TOPIC_STATUS`, `ODB_LINKED_*`,
 > `ODB_POLL_INTERVAL`, `ODB_COMMANDS`, `SFTP_PASSWORD`, `ODB_SFTP_KNOWN_HOSTS`, or
 > `ODB_CONTROL_API_LISTEN`. If you want those features in env-var mode, add the variables
-> yourself. (Notably: the egg has no `ODB_COMMANDS`, so as shipped it defines **no** custom
-> commands, and no `SFTP_PASSWORD`, so SFTP works by key only.)
+> yourself. (Notably: the egg has no `ODB_COMMANDS` for extra custom commands — though
+> `!players` + the linking family are built in by default — and no `SFTP_PASSWORD`, so
+> SFTP works by key only.)
 
 ---
 
@@ -149,10 +151,17 @@ discord:
         rcon.print("removed " .. n)
 ```
 
-⚠️ **Important limitation:** in **env-var mode**, custom commands use `ODB_COMMANDS`
+⚠️ **Important limitation:** in **env-var mode**, *custom* commands use `ODB_COMMANDS`
 (`!trigger=/rcon cmd;!t2=/cmd2`), which only supports the **simple subset**: public,
 single-line commands. **`admin:`, `args:`, multiline, `usage_hint:`, and `discord_link:`
 all require the YAML file.**
+
+**But the standard set is built in:** env-var mode ships `!players` plus the complete
+account-linking family (`!link`, `!unlink`, and admin-gated `!links` / `!unlink-player` /
+`!unlink-all`) by default, with the exact placeholders and admin gating the bridge's
+protocol needs — no configuration required. Set `ODB_DEFAULT_COMMANDS=false` to disable,
+or define the same trigger in `ODB_COMMANDS` to override one. So the free-form/custom
+story above only matters for commands *beyond* that set (`!kick`, scripts, …).
 
 So if you want users to define real custom commands through your UI, the clean approach is a
 **free-form text box** whose contents you drop verbatim into the YAML `commands:` block (i.e.
@@ -179,13 +188,15 @@ linked-role / linked-nickname / admins / control-API / multi-route / custom-comm
 Treat the §3 table as a **superset** of what the wizard emits — you'll template the rest
 yourself.
 
-**If you pre-fill the account-linking commands, copy them exactly** — they're not trivial and
-a naive default silently breaks:
+**If you pre-fill the account-linking commands in a generated YAML, copy them exactly** —
+they're not trivial and a naive default silently breaks:
 - `!link` / `!unlink` need `args: true` (they interpolate `{userid}` / `{1}` / `{user}`).
 - `!links` / `!unlink-player` / `!unlink-all` **must** be `admin: true`, or you expose admin
   unlink operations to everyone in the channel.
-- Use the exact block in `bridge.yaml.example` (lines 60–79) / `DEPLOYMENT.md` §2 "Player
-  linking".
+- Use the exact block in `bridge.yaml.example` / `DEPLOYMENT.md` §2 "Player linking".
+
+(In **env-var mode** you don't copy anything — that exact set is built in and on by
+default, see §4.)
 
 For the runtime topology: AleForge's model is the **sidecar** (bridge runs in the *same*
 container as Factorio, `local` transport, RCON over loopback). In that case Transport stays
@@ -345,9 +356,10 @@ the bridge's actual code:
    (Or just call `./run-sidecar.sh ./bin/x64/factorio <args…>` and let it own the lifecycle.)
 
 **ℹ️ What your 5-var setup does NOT include (all optional):**
-- **No commands at all** — `!players`, `!link`, etc. do nothing (chat mirror only). Add
-  `ODB_COMMANDS="!players=/players online"` for the simple subset. Full linking / admin / args
-  commands need file mode (§4).
+- ~~No commands at all~~ **Update:** `!players` + the full linking family are now built in
+  by default (env-var mode, §4) — your 5-var setup gets them with no extra variables.
+  `ODB_COMMANDS` adds further public single-line commands; other custom commands
+  (admin/args/multiline) need file mode.
 - **No slash commands** and **no linked role/nickname** — both need `ODB_DISCORD_GUILD_ID`.
 - **Channel-topic status is ON by default** and tries to edit the channel topic every ~5 min;
   it needs **Manage Channels**, which the standard bot invite does *not* grant. Either grant

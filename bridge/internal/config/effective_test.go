@@ -7,6 +7,21 @@ import (
 	"testing"
 )
 
+// TestMain runs the whole package from a temp dir: every Load() writes the
+// effective-config snapshot to cwd, which must never be the source tree.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "config-test-*")
+	if err != nil {
+		panic(err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		panic(err)
+	}
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 // setEnvMode sets the minimal env vars for a valid env-var-mode config.
 func setEnvMode(t *testing.T) {
 	t.Helper()

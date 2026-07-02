@@ -80,7 +80,8 @@ misbehaves, read this file first.
 | `ODB_LINKED_NICKNAME` | Nickname format for linked members (`{factorio}`/`{discord}`) | — |
 | `ODB_DISCORD_CHANNEL_ID` | Shortcut: one catch-all `*` route to this channel | — |
 | `ODB_ROUTES` | Explicit routes: `source=channel_id,source=channel_id` | — |
-| `ODB_COMMANDS` | Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` (public, single-line only) | — |
+| `ODB_COMMANDS` | Extra Discord→RCON commands: `!trigger=/rcon cmd;!t2=/cmd2` (public, single-line only; same trigger replaces a built-in) | — |
+| `ODB_DEFAULT_COMMANDS` | Built-in command set: `!players` + the full account-linking family (`!link`, `!unlink`, admin `!links`/`!unlink-player`/`!unlink-all`) | `true` |
 | `ODB_ADMIN_ROLES` | Comma-separated admin role IDs | — |
 | `ODB_ADMIN_USERS` | Comma-separated admin user IDs | — |
 | `ODB_CONTROL_API_ENABLED` | Enable the Control API | `false` |
@@ -161,7 +162,14 @@ needs the `applications.commands` scope (the wizard's invite URL includes it).
 
 **Player linking:** the companion mod can map Discord users ↔ Factorio players. A player
 runs `/odb-link` in-game to get a short code, then runs your link command in Discord
-(e.g. `!link CODE`). Wire it as a normal command using the `{userid}` token:
+(e.g. `!link CODE`).
+
+> **Env-var mode ships all of this built in.** `!players` and the full linking family
+> below are enabled by default (`ODB_DEFAULT_COMMANDS=false` to opt out; an `ODB_COMMANDS`
+> entry with the same trigger overrides the built-in). The YAML blocks below are what file
+> mode users copy — env mode users get them for free.
+
+Wire it as a normal command using the `{userid}` token:
 ```yaml
 - trigger: "!link"
   args: true
@@ -197,8 +205,10 @@ failures are logged.
 **Notes:**
 - Anyone in the channel can run **public** commands — keep destructive ones `admin: true`.
 - `rcon` may be **multiline** (a `/silent-command` script); it's sent as a single RCON call.
-- Admin-gating, multiline, and args need the **YAML file**; env mode (`ODB_COMMANDS`) is
-  the simple subset (public, single-line). `ODB_ADMIN_ROLES`/`ODB_ADMIN_USERS` set admins.
+- **Custom** commands with admin-gating, multiline, or args need the **YAML file**; env
+  mode (`ODB_COMMANDS`) only adds the simple subset (public, single-line). The built-in
+  set (`ODB_DEFAULT_COMMANDS`) already covers `!players` + linking with correct gating.
+  `ODB_ADMIN_ROLES`/`ODB_ADMIN_USERS` set admins (default: Discord Administrator permission).
 - **Arguments:** set `args: true` to interpolate the message into `rcon`: `{args}` (all
   words after the trigger), `{1}`/`{2}`/… (positional), `{user}` (sender name). Example:
   `args: true`, `rcon: "/kick {1}"` → `!kick Bob` runs `/kick Bob`. User input is

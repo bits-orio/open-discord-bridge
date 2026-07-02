@@ -51,6 +51,7 @@ func TestLoadFromEnvCommands(t *testing.T) {
 	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
 	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
 	t.Setenv("ODB_COMMANDS", "!players=/players online; !evo=/evolution")
+	t.Setenv("ODB_DEFAULT_COMMANDS", "false") // isolate ODB_COMMANDS parsing from the built-in set
 
 	c, err := Load("/no/such/bridge.yaml")
 	if err != nil {
@@ -100,5 +101,83 @@ func TestLoadFromEnvMissingTokenFails(t *testing.T) {
 
 	if _, err := Load("/no/such/bridge.yaml"); err == nil {
 		t.Fatal("expected error for missing Discord token")
+	}
+}
+
+func TestEnvModeDefaultCommands(t *testing.T) {
+	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
+	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
+
+	c, err := Load("/no/such/bridge.yaml")
+	if err != nil {
+		t.Fatalf("env load: %v", err)
+	}
+	byTrigger := make(map[string]Command, len(c.Discord.Commands))
+	for _, cmd := range c.Discord.Commands {
+		byTrigger[cmd.Trigger] = cmd
+	}
+	if len(byTrigger) != 6 {
+		t.Fatalf("want 6 default commands, got %+v", c.Discord.Commands)
+	}
+	if cmd := byTrigger["!link"]; !cmd.Args || cmd.Admin || cmd.Rcon != "/odb-confirm-link {1} {userid} {user}" {
+		t.Fatalf("!link default wrong: %+v", cmd)
+	}
+	if cmd := byTrigger["!unlink"]; !cmd.Args || cmd.Admin || cmd.Rcon != "/odb-unlink-discord {userid}" {
+		t.Fatalf("!unlink default wrong: %+v", cmd)
+	}
+	for _, adminTrigger := range []string{"!links", "!unlink-player", "!unlink-all"} {
+		if !byTrigger[adminTrigger].Admin {
+			t.Fatalf("%s must be admin-gated: %+v", adminTrigger, byTrigger[adminTrigger])
+		}
+	}
+	if cmd := byTrigger["!players"]; cmd.Admin || cmd.Rcon != "/players online" {
+		t.Fatalf("!players default wrong: %+v", cmd)
+	}
+}
+
+func TestEnvModeDefaultCommandsDisabled(t *testing.T) {
+	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
+	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
+	t.Setenv("ODB_DEFAULT_COMMANDS", "false")
+
+	c, err := Load("/no/such/bridge.yaml")
+	if err != nil {
+		t.Fatalf("env load: %v", err)
+	}
+	if len(c.Discord.Commands) != 0 {
+		t.Fatalf("defaults should be off, got %+v", c.Discord.Commands)
+	}
+}
+
+func TestEnvModeExplicitCommandOverridesDefault(t *testing.T) {
+	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
+	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
+	t.Setenv("ODB_COMMANDS", "!players=/players full")
+
+	c, err := Load("/no/such/bridge.yaml")
+	if err != nil {
+		t.Fatalf("env load: %v", err)
+	}
+	if len(c.Discord.Commands) != 6 {
+		t.Fatalf("want override + 5 remaining defaults, got %+v", c.Discord.Commands)
+	}
+	var players Command
+	seen := 0
+	for _, cmd := range c.Discord.Commands {
+		if cmd.Trigger == "!players" {
+			players, seen = cmd, seen+1
+		}
+	}
+	if seen != 1 || players.Rcon != "/players full" {
+		t.Fatalf("explicit !players must replace the default exactly once: %+v", c.Discord.Commands)
 	}
 }
