@@ -160,11 +160,12 @@ func main() {
 	switch cfg.Transport {
 	case "sftp":
 		tail = transport.NewSFTP(transport.SFTPConfig{
-			Host:           cfg.Factorio.SFTP.Host,
-			User:           cfg.Factorio.SFTP.User,
-			KeyPath:        cfg.Factorio.SFTP.KeyPath,
-			Password:       cfg.Factorio.SFTP.Password,
-			KnownHostsPath: cfg.Factorio.SFTP.KnownHostsPath,
+			Host:                 cfg.Factorio.SFTP.Host,
+			User:                 cfg.Factorio.SFTP.User,
+			KeyPath:              cfg.Factorio.SFTP.KeyPath,
+			Password:             cfg.Factorio.SFTP.Password,
+			KnownHostsPath:       cfg.Factorio.SFTP.KnownHostsPath,
+			AllowInsecureHostKey: cfg.Factorio.SFTP.AllowInsecureHostKey,
 		}, cfg.Factorio.EventsFile, cfg.Interval())
 	default:
 		tail = transport.NewLocal(cfg.Factorio.EventsFile, cfg.Interval())

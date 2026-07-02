@@ -54,6 +54,13 @@ type SFTPConfig struct {
 	PasswordEnv    string `yaml:"password_env"`
 	Password       string `yaml:"-"` // resolved from env at load time
 	KnownHostsPath string `yaml:"known_hosts_path"`
+
+	// AllowInsecureHostKey opts into connecting without host key verification when
+	// known_hosts_path is unset and password auth is used. Without known_hosts_path (or
+	// this flag), validate() refuses to start: a network attacker could otherwise MITM
+	// the connection and capture the SFTP password on any reconnect. Only set this if
+	// you've knowingly accepted that risk (e.g. a trusted private network).
+	AllowInsecureHostKey bool `yaml:"allow_insecure_host_key"`
 }
 
 type ControlAPIConfig struct {
@@ -185,6 +192,12 @@ func (c *Config) validate() error {
 		if s.KeyPath == "" && s.Password == "" {
 			return fmt.Errorf("sftp transport requires factorio.sftp.key_path or a password")
 		}
+		if s.Password != "" && s.KnownHostsPath == "" && !s.AllowInsecureHostKey {
+			return fmt.Errorf("sftp transport uses password auth but factorio.sftp.known_hosts_path is not set; " +
+				"without host key verification, a network attacker could intercept the SFTP password on " +
+				"reconnect. Set factorio.sftp.known_hosts_path, or set factorio.sftp.allow_insecure_host_key: " +
+				"true to explicitly accept this risk (not recommended)")
+		}
 	}
 	if c.Factorio.RCON.Address == "" {
 		return fmt.Errorf("factorio.rcon.address is required")
@@ -232,12 +245,13 @@ func LoadFromEnv() (*Config, error) {
 			LinksFile:          expandPath(os.Getenv("ODB_LINKS_FILE")),
 			RequiredModVersion: os.Getenv("ODB_REQUIRED_MOD_VERSION"),
 			SFTP: SFTPConfig{
-				Host:           os.Getenv("ODB_SFTP_HOST"),
-				User:           os.Getenv("ODB_SFTP_USER"),
-				KeyPath:        os.Getenv("ODB_SFTP_KEY_PATH"),
-				PasswordEnv:    "SFTP_PASSWORD",
-				Password:       os.Getenv("SFTP_PASSWORD"),
-				KnownHostsPath: os.Getenv("ODB_SFTP_KNOWN_HOSTS"),
+				Host:                 os.Getenv("ODB_SFTP_HOST"),
+				User:                 os.Getenv("ODB_SFTP_USER"),
+				KeyPath:              os.Getenv("ODB_SFTP_KEY_PATH"),
+				PasswordEnv:          "SFTP_PASSWORD",
+				Password:             os.Getenv("SFTP_PASSWORD"),
+				KnownHostsPath:       os.Getenv("ODB_SFTP_KNOWN_HOSTS"),
+				AllowInsecureHostKey: parseBool(os.Getenv("ODB_SFTP_ALLOW_INSECURE_HOST_KEY")),
 			},
 		},
 		Discord: DiscordConfig{
