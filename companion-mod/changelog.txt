@@ -1,4 +1,22 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.9
+Date: 2026-07-02
+  Changes:
+    - Bridge writes bridge.effective.yaml at every startup, including failed ones: the fully
+      resolved config it is running with, plus the config mode, validation result, secret
+      SET/MISSING status (names only, never values), and warnings. Output only, never read back.
+    - Unknown config keys now log a loud warning instead of being silently dropped (catches
+      values injected at the wrong key path, e.g. by a hosting panel's config rewriter).
+    - New ODB_CONFIG=none forces env-var mode even when a bridge.yaml exists, so a stray or
+      panel-written file can never silently disable the ODB_* variables.
+    - Env-var mode now ships a built-in command set by default: !players plus the full
+      account-linking family (!link, !unlink, and admin-gated !links / !unlink-player /
+      !unlink-all), correctly wired. Disable with ODB_DEFAULT_COMMANDS=false; an ODB_COMMANDS
+      entry with the same trigger overrides the built-in one.
+    - Reference Pterodactyl egg gains Config mode (ODB_CONFIG, default none) and Built-in
+      commands (ODB_DEFAULT_COMMANDS) variables.
+    - No gameplay changes - the companion mod is functionally identical to 0.1.5.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.8
 Date: 2026-06-29
   Changes:
