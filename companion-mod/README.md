@@ -95,5 +95,12 @@ The bridge delivers Discord messages by running the console command
 `/silent-command`). The mod parses it, raises `on_incoming` for integrators, and prints a
 default `[Discord] user: message` line to all players.
 
+> **Integrator security note:** the `on_incoming` event carries the **raw** Discord
+> `user` and `message` (integrators that parse commands need exact content). If your mod
+> prints either into game chat, strip newlines/control characters first, or Discord users
+> can forge extra chat lines (e.g. `"hi\nBob: gg"` renders a fake line as Bob) through
+> your mod. Factorio [rich text](https://wiki.factorio.com/rich_text) tags are a supported
+> feature — no need to strip those. The mod's own default delivery already does this.
+
 See the [GitHub repo](https://github.com/bits-orio/open-discord-bridge) for the full design
 and deployment docs.

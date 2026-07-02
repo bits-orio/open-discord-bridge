@@ -143,9 +143,17 @@ func main() {
 	// (mts.*, …) render in an ANSI code block with their "[ns → event]" category label
 	// colored (deterministically per key) so categories are visually distinct; the rest of
 	// the line stays default. Vanilla/bridge events and chat are always plain text.
-	emit := func(ev Event) {
+	// pingIDs are the Discord users the message may ping (resolved @mentions); everything
+	// else stays under the deny-all AllowedMentions default.
+	emit := func(ev Event, pingIDs ...string) {
 		channel, ok := rt.Channel(ev.Event)
 		if !ok {
+			return
+		}
+		if len(pingIDs) > 0 {
+			if err := dc.PostMentioning(channel, renderEvent(ev, cfg.Discord.Embed), pingIDs...); err != nil {
+				log.Printf("discord: mention post failed: %v", err)
+			}
 			return
 		}
 		dc.Send(channel, renderEvent(ev, cfg.Discord.Embed))
@@ -189,12 +197,13 @@ func main() {
 		}
 		handleLinkEvent(ls, ev)
 		// Resolve @playerName mentions to Discord pings in chat messages.
+		var pingIDs []string
 		if isChatEvent(ev.Event) {
 			if msg, ok := ev.Data["message"].(string); ok && msg != "" {
-				ev.Data["message"] = mentions.resolve(msg)
+				ev.Data["message"], pingIDs = mentions.resolve(msg)
 			}
 		}
-		emit(ev)
+		emit(ev, pingIDs...)
 	}
 
 	// baseCtx lets the Control API request a restart (clean exit → supervisor restarts).
@@ -426,7 +435,11 @@ func initiateDiscordLink(rc *rcon.Client, dc *discord.Client, msg discord.Inboun
 	dmText := fmt.Sprintf(":link: Run this command in Factorio to link your account (expires ~60s):\n```\n/odb-discord-link %s\n```", code)
 	if err := dc.SendDM(msg.UserID, dmText); err != nil {
 		log.Printf("discord-link: DM to %s failed (%v) — posting in channel", msg.UserID, err)
-		dc.Send(msg.ChannelID, fmt.Sprintf("<@%s> %s", msg.UserID, dmText))
+		// Deliberate, targeted ping: this is a bridge-authored fallback notifying the same
+		// user who ran !link that their DM bounced, not untrusted relayed content.
+		if err := dc.PostMentioning(msg.ChannelID, fmt.Sprintf("<@%s> %s", msg.UserID, dmText), msg.UserID); err != nil {
+			log.Printf("discord-link: fallback channel post to %s failed: %v", msg.ChannelID, err)
+		}
 	}
 }
 
@@ -453,21 +466,32 @@ func (mr *mentionResolver) update(links []linkInfo) {
 	mr.mu.Unlock()
 }
 
-func (mr *mentionResolver) resolve(s string) string {
+// resolve rewrites @playerName tokens to <@id> and returns the distinct IDs it
+// resolved. Outbound sends default to pinging nobody (AllowedMentions deny-all), so the
+// caller must pass these IDs to PostMentioning for the rewritten mentions to actually
+// notify — a bare <@id> in a deny-all message renders as a mention but pings no one.
+func (mr *mentionResolver) resolve(s string) (string, []string) {
 	mr.mu.RLock()
 	links := mr.links
 	mr.mu.RUnlock()
 	if len(links) == 0 {
-		return s
+		return s, nil
 	}
-	return atMentionRe.ReplaceAllStringFunc(s, func(m string) string {
+	var ids []string
+	seen := make(map[string]bool)
+	resolved := atMentionRe.ReplaceAllStringFunc(s, func(m string) string {
 		at := strings.IndexByte(m, '@')
 		name := m[at+1:]
 		if id, ok := links[name]; ok {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
 			return m[:at] + "<@" + id + ">"
 		}
 		return m
 	})
+	return resolved, ids
 }
 
 // syncMentions polls /odb-status every 20s to keep the mention cache fresh.
