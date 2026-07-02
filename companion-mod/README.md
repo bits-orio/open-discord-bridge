@@ -73,10 +73,47 @@ end
 -- (embed:true) that tag is ANSI-colored per event type.
 
 -- Subscribe to inbound Discord messages for context-aware delivery.
-script.on_event(
-  remote.call("open-discord-bridge-v1", "get_event_id", "on_incoming"),
-  function(e) --[[ e.user, e.message, e.channel ]] end
-)
+--
+-- get_event_id must NOT be called at this main-chunk level or from on_load: remote
+-- interfaces aren't guaranteed registered yet when a mod's control.lua top level runs,
+-- and remote.call is illegal inside on_load outright. The custom-event id it returns is
+-- also only valid for the session that generated it (it can shift if the bridge mod's
+-- mod-set changes), so don't cache it once and hardcode it forever either — resolve it
+-- again whenever it might have changed.
+--
+-- The fix: fetch (and cache in `storage`) from on_init/on_configuration_changed, where
+-- remote.call is legal and which both re-run whenever the mod set changes; then on_load
+-- (which can't call remote.call) reads the cached id back out of storage and registers
+-- the handler with it. This mirrors the mts-v1 integration pattern.
+
+local function on_discord_message(e) --[[ e.user, e.message, e.channel ]] end
+
+local function fetch_incoming_event_id()
+  if remote.interfaces["open-discord-bridge-v1"] then
+    storage.my_mod_incoming_event = remote.call("open-discord-bridge-v1", "get_event_id", "on_incoming")
+  end
+end
+
+local function register_incoming_handler()
+  if storage.my_mod_incoming_event then
+    script.on_event(storage.my_mod_incoming_event, on_discord_message)
+  end
+end
+
+script.on_init(function()
+  fetch_incoming_event_id()
+  register_incoming_handler()
+end)
+
+script.on_configuration_changed(function()
+  fetch_incoming_event_id()
+  register_incoming_handler()
+end)
+
+script.on_load(function()
+  -- No remote.call here — reuse the id cached in storage by on_init/on_configuration_changed.
+  register_incoming_handler()
+end)
 ```
 
 ### JSONL line shape

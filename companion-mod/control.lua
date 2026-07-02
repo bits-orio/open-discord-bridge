@@ -38,7 +38,10 @@ local function write_event(event_key, data, surface_name)
   }) .. "\n"
   -- append == truncated_this_session: first write of the session passes append=false
   -- (overwrite), every later write passes append=true.
-  helpers.write_file(EVENTS_FILE, line, truncated_this_session)
+  -- for_player=0: write only the server's copy. Without it, every connected client in a
+  -- multiplayer game independently writes its own copy of the file, which is wasteful
+  -- and can race/corrupt on servers with multiple clients.
+  helpers.write_file(EVENTS_FILE, line, truncated_this_session, 0)
   truncated_this_session = true
 end
 
@@ -108,8 +111,8 @@ local function ensure_storage()
   storage.odb.links            = storage.odb.links or {}            -- player_name -> { discord_id, discord_name }
   storage.odb.pending          = storage.odb.pending or {}          -- game-initiated: link code -> { player, expires }
   storage.odb.discord_pending  = storage.odb.discord_pending or {}  -- discord-initiated: link code -> { discord_id, discord_name, expires }
-  storage.odb.link_counter     = storage.odb.link_counter or 0
   storage.odb.baseline_disabled = storage.odb.baseline_disabled or {} -- vanilla event key -> true
+  storage.odb.rocket_last_announced = storage.odb.rocket_last_announced or {} -- force name -> tick
 end
 
 -- baseline emits a built-in vanilla.* event unless an integrator has disabled that key via
@@ -167,9 +170,12 @@ remote.add_interface(INTERFACE, {
     handle_incoming(args)
   end,
 
-  -- Returns the linked Discord user ID for a player, or nil.
+  -- Returns the linked Discord user ID for a player, or nil. ensure_storage() guards
+  -- against this being called before our own on_init has run (mod load order is not
+  -- guaranteed), same as register_source/set_baseline above.
   linked_discord_id = function(player_name)
-    local link = storage.odb.links and storage.odb.links[player_name]
+    ensure_storage()
+    local link = storage.odb.links[player_name]
     return link and link.discord_id or nil
   end,
 })
@@ -221,14 +227,18 @@ end)
 -- ─── Player linking (Discord ↔ Factorio) ─────────────────────────────────────
 -- A player runs /odb-link in-game to get a short code, then runs the bridge's link
 -- command in Discord (e.g. "!link CODE"), which calls /odb-confirm-link over RCON with
--- the Discord user id/name. The code is derived deterministically (no math.random, so
--- it's multiplayer-safe) and is short-lived.
+-- the Discord user id/name. The code is short-lived and drawn from Factorio's
+-- math.random, which the engine replaces with its own deterministic, multiplayer-synced
+-- generator (see the runtime API docs on math.random) — not real entropy, but not
+-- predictable/enumerable from outside the game either, which is enough here since this
+-- isn't a cryptographic secret.
 
 local LINK_TTL_TICKS = 60 * 60 -- ~60 seconds
 local CODE_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+local CODE_SPACE = 2176782336 -- 36^6
 
-local function make_link_code(counter)
-  local mixed = (counter * 2654435761 + game.tick) % 2176782336 -- 36^6
+local function make_link_code()
+  local mixed = math.random(0, CODE_SPACE - 1)
   local code = ""
   for _ = 1, 6 do
     local r = mixed % 36
@@ -236,6 +246,18 @@ local function make_link_code(counter)
     mixed = math.floor(mixed / 36)
   end
   return code
+end
+
+-- Sweep tick-expired entries out of a pending-link table. Called at the point a new code
+-- is created, piggybacking on that natural churn instead of a separate periodic scan, so
+-- storage.odb.pending / discord_pending don't grow unbounded on a long-running server.
+local function purge_expired(pending_table)
+  local now = game.tick
+  for code, entry in pairs(pending_table) do
+    if now > entry.expires then
+      pending_table[code] = nil
+    end
+  end
 end
 
 local ODB_LINK_FRAME = "odb_link_frame"
@@ -267,8 +289,8 @@ commands.add_command("odb-link", "Get a code to link your Discord account", func
   local player = cmd.player_index and game.get_player(cmd.player_index)
   if not player then return end -- must be a player (not RCON)
   storage.odb.pending = storage.odb.pending or {}
-  storage.odb.link_counter = (storage.odb.link_counter or 0) + 1
-  local code = make_link_code(storage.odb.link_counter)
+  purge_expired(storage.odb.pending)
+  local code = make_link_code()
   storage.odb.pending[code] = { player = player.name, expires = game.tick + LINK_TTL_TICKS }
   open_link_gui(player, code)
 end)
@@ -329,6 +351,7 @@ commands.add_command("odb-register-discord-code", "Open Discord Bridge: register
     return
   end
   storage.odb.discord_pending = storage.odb.discord_pending or {}
+  purge_expired(storage.odb.discord_pending)
   storage.odb.discord_pending[string.upper(code)] = {
     discord_id   = discord_id,
     discord_name = discord_name,
@@ -476,11 +499,23 @@ end)
 -- ─── Baseline layer: vanilla events ──────────────────────────────────────────
 
 script.on_event(defines.events.on_console_chat, function(e)
-  if not e.player_index then return end
+  -- player_index is absent for messages typed directly into the server's console
+  -- (stdin), not just for players — relay those too, tagged as "Server".
+  if not e.player_index then
+    baseline("chat", { player = "Server", message = e.message })
+    return
+  end
   local player = game.get_player(e.player_index)
   if not player then return end
   baseline("chat", { player = player.name, message = e.message }, player.surface.name)
 end)
+
+-- Emit one game_started event per session (server start / load), on the first player to
+-- join. Previously this fired from on_tick, but a headless server auto-pauses at 0
+-- connected players and on_tick does not fire while paused — so on an empty server it
+-- never fired. Joining is what unpauses the server, so on_player_joined_game always
+-- fires exactly when "the game has started" first becomes true/observable.
+local game_started_emitted = false
 
 script.on_event(defines.events.on_player_joined_game, function(e)
   local player = game.get_player(e.player_index)
@@ -489,6 +524,11 @@ script.on_event(defines.events.on_player_joined_game, function(e)
     player       = player.name,
     online_count = #game.connected_players,
   })
+
+  if not game_started_emitted then
+    game_started_emitted = true
+    baseline("game_started", { online_count = #game.connected_players })
+  end
 end)
 
 script.on_event(defines.events.on_player_left_game, function(e)
@@ -512,9 +552,25 @@ script.on_event(defines.events.on_player_died, function(e)
   baseline("player_died", { player = player.name, cause = cause }, player.surface.name)
 end)
 
+-- Space Age's automated cargo rockets can launch repeatedly in quick succession once a
+-- silo/force has the logistics for it, which would otherwise flood Discord with one
+-- message per launch. Cap baseline announcements to one per force per cooldown window.
+local ROCKET_ANNOUNCE_COOLDOWN_TICKS = 60 * 60 -- 60s
+
+local function rocket_announce_allowed(force_name)
+  storage.odb.rocket_last_announced = storage.odb.rocket_last_announced or {}
+  local last = storage.odb.rocket_last_announced[force_name]
+  if last and game.tick - last < ROCKET_ANNOUNCE_COOLDOWN_TICKS then
+    return false
+  end
+  storage.odb.rocket_last_announced[force_name] = game.tick
+  return true
+end
+
 script.on_event(defines.events.on_rocket_launched, function(e)
   local rocket = e.rocket
   if not (rocket and rocket.valid) then return end
+  if not rocket_announce_allowed(rocket.force.name) then return end
   baseline("rocket_launched", {
     surface       = rocket.surface.name,
     flight_count  = rocket.force.rockets_launched,
@@ -525,21 +581,4 @@ script.on_event(defines.events.on_research_finished, function(e)
   local research = e.research
   if not research then return end
   baseline("research_finished", { tech_name = research.name, level = research.level })
-end)
-
--- Emit one game_started event per session (server start / load). on_tick MUST stay
--- registered unconditionally: a self-unregistering handler makes the registered-event
--- set differ between the server and a freshly-loading client, which breaks multiplayer
--- joins ("mod event handlers are not identical"). The session-local flag (not stored)
--- re-arms on each load and gates the one-time write, so the handler is a cheap no-op
--- afterward.
-local game_started_emitted = false
-script.on_event(defines.events.on_tick, function()
-  if game_started_emitted then
-    return
-  end
-  game_started_emitted = true
-  baseline("game_started", {
-    online_count = #game.connected_players,
-  })
 end)
