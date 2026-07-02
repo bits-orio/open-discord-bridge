@@ -145,6 +145,9 @@ func Load(path string) (*Config, error) {
 	c.Factorio.EventsFile = expandPath(c.Factorio.EventsFile)
 	c.Factorio.RCON.Address = os.ExpandEnv(c.Factorio.RCON.Address)
 	c.LogFile = expandPath(c.LogFile)
+	c.Factorio.LinksFile = expandPath(c.Factorio.LinksFile)
+	c.Factorio.SFTP.KeyPath = expandPath(c.Factorio.SFTP.KeyPath)
+	c.Factorio.SFTP.KnownHostsPath = expandPath(c.Factorio.SFTP.KnownHostsPath)
 
 	if c.Transport == "" {
 		c.Transport = "local"

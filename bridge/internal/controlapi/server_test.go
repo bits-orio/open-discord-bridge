@@ -141,6 +141,16 @@ func TestConfigPost(t *testing.T) {
 	}
 }
 
+func TestConfigPostRejectsOversizedBody(t *testing.T) {
+	// A body padded past maxConfigBodyBytes must be rejected rather than consumed unbounded.
+	pad := strings.Repeat("x", maxConfigBodyBytes+1)
+	body := `{"discord":{"routes":[{"source":"*","channel_id":"` + pad + `"}]}}`
+	rr := postJSON(t, "/v1/config", body)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("oversized body: got %d, want 400", rr.Code)
+	}
+}
+
 func TestRestartAccepted(t *testing.T) {
 	if rr := do(t, http.MethodPost, "/v1/restart", true); rr.Code != http.StatusAccepted {
 		t.Fatalf("got %d, want 202", rr.Code)

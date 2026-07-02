@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"time"
+	"unicode/utf8"
 
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/config"
 	"github.com/bits-orio/open-discord-bridge/bridge/internal/controlapi"
@@ -224,27 +225,28 @@ func main() {
 		warnCh, hasWarnCh := rt.Channel("bridge.warning")
 
 		rep := dc.CheckPermissions(pc)
-		if rep.Err != "" {
+		switch {
+		case rep.Err != "":
+			// Can't check right now — fall through to the retry loop below instead of
+			// giving up permanently, same as a later check erroring.
 			log.Printf("bridge: could not check permissions: %s", rep.Err)
-			return
-		}
-		if rep.OK() {
+		case rep.OK():
 			log.Printf("bridge: Discord permission preflight passed (checked channels: %s)",
 				strings.Join(rt.InboundChannels(), ", "))
 			return
-		}
-
-		// Missing permissions — post the warning and start retry loop.
-		if len(rep.Missing) > 0 {
-			log.Printf("bridge: bot is missing permissions: %s", strings.Join(rep.Missing, ", "))
-		}
-		if rep.Hierarchy {
-			log.Printf("bridge: bot's role is not above the linked role")
-		}
-		if hasWarnCh {
-			dc.Send(warnCh, permissionHelp(rep))
-		} else {
-			log.Printf("bridge: no route matches \"bridge.warning\" — warning logged only, not posted to Discord")
+		default:
+			// Missing permissions — post the warning and start retry loop.
+			if len(rep.Missing) > 0 {
+				log.Printf("bridge: bot is missing permissions: %s", strings.Join(rep.Missing, ", "))
+			}
+			if rep.Hierarchy {
+				log.Printf("bridge: bot's role is not above the linked role")
+			}
+			if hasWarnCh {
+				dc.Send(warnCh, permissionHelp(rep))
+			} else {
+				log.Printf("bridge: no route matches \"bridge.warning\" — warning logged only, not posted to Discord")
+			}
 		}
 
 		ticker := time.NewTicker(20 * time.Second)
@@ -454,7 +456,7 @@ func (mr *mentionResolver) update(links []linkInfo) {
 	m := make(map[string]string, len(links))
 	for _, l := range links {
 		if l.DiscordID != "" {
-			m[l.Player] = l.DiscordID
+			m[strings.ToLower(l.Player)] = l.DiscordID
 		}
 	}
 	mr.mu.Lock()
@@ -478,7 +480,7 @@ func (mr *mentionResolver) resolve(s string) (string, []string) {
 	resolved := atMentionRe.ReplaceAllStringFunc(s, func(m string) string {
 		at := strings.IndexByte(m, '@')
 		name := m[at+1:]
-		if id, ok := links[name]; ok {
+		if id, ok := links[strings.ToLower(name)]; ok {
 			if !seen[id] {
 				seen[id] = true
 				ids = append(ids, id)
@@ -525,10 +527,20 @@ func queryLinks(rc *rcon.Client) ([]linkInfo, bool) {
 func nickFor(format string, l linkInfo) string {
 	n := strings.ReplaceAll(format, "{factorio}", l.Player)
 	n = strings.ReplaceAll(n, "{discord}", l.DiscordName)
-	if len(n) > 32 {
-		n = n[:32]
+	return truncateUTF8(n, 32)
+}
+
+// truncateUTF8 cuts s to at most n bytes, backing off to the last full rune boundary so the
+// result is always valid UTF-8 — plain byte slicing can split a multi-byte rune, and Discord's
+// API rejects invalid UTF-8 with a 400 (silently dropping the nickname update).
+func truncateUTF8(s string, n int) string {
+	if len(s) <= n {
+		return s
 	}
-	return n
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n]
 }
 
 // syncLinkedMembers reconciles a Discord role and/or nickname with the set of linked
@@ -649,7 +661,7 @@ func handleLinkEvent(ls *linksStore, ev Event) {
 // restoreLinks pushes all stored links into the mod via /odb-set-link after a connection.
 func restoreLinks(rc *rcon.Client, ls *linksStore) {
 	for _, l := range ls.all() {
-		cmd := fmt.Sprintf("/odb-set-link %s %s %s", l.Player, l.DiscordID, l.DiscordName)
+		cmd := fmt.Sprintf("/odb-set-link %s %s %s", sanitizeArg(l.Player), sanitizeArg(l.DiscordID), sanitizeArg(l.DiscordName))
 		if _, err := rc.Execute(cmd); err != nil {
 			log.Printf("links: restore %s: %v", l.Player, err)
 		}

@@ -1,6 +1,13 @@
 package config
 
-import "testing"
+import (
+	"bytes"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 func TestLoadFromEnvSingleChannel(t *testing.T) {
 	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
@@ -89,6 +96,71 @@ func TestLoadFromEnvAdmins(t *testing.T) {
 	}
 	if !c.Discord.Admins.PermissionFallback() {
 		t.Fatal("permission fallback should default to true")
+	}
+}
+
+func TestLoadExpandsLinksAndSFTPPaths(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("ODB_TEST_HOME", dir)
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+
+	cfgPath := filepath.Join(dir, "bridge.yaml")
+	yaml := `
+transport: sftp
+factorio:
+  rcon:
+    address: "game:27015"
+    password_env: FACTORIO_RCON_PASSWORD
+  events_file: /tmp/events.jsonl
+  links_file: "${ODB_TEST_HOME}/links.json"
+  sftp:
+    host: "example.com:22"
+    user: bob
+    key_path: "${ODB_TEST_HOME}/id_rsa"
+    known_hosts_path: "${ODB_TEST_HOME}/known_hosts"
+discord:
+  token_env: DISCORD_BOT_TOKEN
+  routes:
+    - source: "*"
+      channel_id: "12345"
+`
+	if err := os.WriteFile(cfgPath, []byte(yaml), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	c, err := Load(cfgPath)
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if want := filepath.Join(dir, "links.json"); c.Factorio.LinksFile != want {
+		t.Errorf("links_file not expanded: got %q, want %q", c.Factorio.LinksFile, want)
+	}
+	if want := filepath.Join(dir, "id_rsa"); c.Factorio.SFTP.KeyPath != want {
+		t.Errorf("sftp.key_path not expanded: got %q, want %q", c.Factorio.SFTP.KeyPath, want)
+	}
+	if want := filepath.Join(dir, "known_hosts"); c.Factorio.SFTP.KnownHostsPath != want {
+		t.Errorf("sftp.known_hosts_path not expanded: got %q, want %q", c.Factorio.SFTP.KnownHostsPath, want)
+	}
+}
+
+func TestLoadLogsEnvFallbackWhenNoConfigFile(t *testing.T) {
+	t.Setenv("ODB_RCON_ADDRESS", "game:27015")
+	t.Setenv("FACTORIO_RCON_PASSWORD", "pw")
+	t.Setenv("DISCORD_BOT_TOKEN", "tok")
+	t.Setenv("ODB_EVENTS_FILE", "/tmp/events.jsonl")
+	t.Setenv("ODB_DISCORD_CHANNEL_ID", "12345")
+
+	var buf bytes.Buffer
+	orig := log.Writer()
+	log.SetOutput(&buf)
+	defer log.SetOutput(orig)
+
+	if _, err := Load("/no/such/bridge.yaml"); err != nil {
+		t.Fatalf("env load: %v", err)
+	}
+	if !strings.Contains(buf.String(), "falling back to environment variables") {
+		t.Errorf("expected a log line about falling back to env vars, got: %q", buf.String())
 	}
 }
 

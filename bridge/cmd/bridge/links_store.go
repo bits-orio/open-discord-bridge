@@ -60,13 +60,32 @@ func (ls *linksStore) save() {
 		return
 	}
 	tmp := ls.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0644); err != nil {
+	if err := writeFileSynced(tmp, b, 0644); err != nil {
 		log.Printf("links: write %s: %v", tmp, err)
 		return
 	}
 	if err := os.Rename(tmp, ls.path); err != nil {
 		log.Printf("links: rename to %s: %v", ls.path, err)
 	}
+}
+
+// writeFileSynced writes b to path and fsyncs the file before closing, so the data is on
+// disk before the caller renames it into place — otherwise a power loss between write and
+// rename can leave the destination empty or truncated after the rename lands.
+func writeFileSynced(path string, b []byte, perm os.FileMode) error {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Sync(); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 // upsert adds or replaces a link and saves.
