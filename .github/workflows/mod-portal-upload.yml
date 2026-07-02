@@ -25,6 +25,8 @@ jobs:
       DISCORD_ANNOUNCEMENTS_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need tags/history for `git show <tag>:...` below
 
       - name: Resolve tag
         id: tag
