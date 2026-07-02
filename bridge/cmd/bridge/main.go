@@ -37,6 +37,13 @@ type Event struct {
 	Data    map[string]any `json:"data"`
 }
 
+// rconExecutor is the subset of *rcon.Client the bridge's RCON call sites need — narrow
+// enough to fake with an in-memory stub in tests, without a live Factorio/RCON connection.
+// *rcon.Client satisfies this already, so production code is unaffected.
+type rconExecutor interface {
+	Execute(cmd string) (string, error)
+}
+
 func main() {
 	cfgPath := flag.String("config", "bridge.yaml", "path to config file")
 	flag.Parse()
@@ -74,7 +81,10 @@ func main() {
 				go initiateDiscordLink(rc, dc, msg)
 				return
 			}
-			if reply := runCommand(rc, cmd, isAdmin, commandArgs(msg.Message), msg.User, msg.UserID); reply != "" {
+			reply, err := runCommand(rc, cmd, isAdmin, commandArgs(msg.Message), msg.User, msg.UserID)
+			if err != nil {
+				dc.Send(msg.ChannelID, fmt.Sprintf(":warning: `%s` failed: %s", cmd.Trigger, err.Error()))
+			} else if reply != "" {
 				dc.Send(msg.ChannelID, reply)
 			}
 			return
@@ -96,11 +106,13 @@ func main() {
 	}
 
 	// Expose the configured commands as guild slash commands too (if a guild is set).
+	// EnableSlashCommands defers the interaction response and edits in this result once
+	// it's ready, so a slow RCON round-trip here can't blow Discord's 3s ack window.
 	if specs, byName := buildSlash(cfg.Discord.Commands); len(specs) > 0 && cfg.Discord.GuildID != "" {
-		dc.EnableSlashCommands(cfg.Discord.GuildID, specs, func(inv discord.SlashInvocation) string {
+		dc.EnableSlashCommands(cfg.Discord.GuildID, specs, func(inv discord.SlashInvocation) (string, error) {
 			cmd, ok := byName[inv.Name]
 			if !ok {
-				return "Unknown command."
+				return "Unknown command.", nil
 			}
 			isAdmin := resolveAdmin(cfg.Discord.Admins, discord.InboundMessage{
 				UserID: inv.UserID, Roles: inv.Roles, IsAdmin: inv.IsAdmin,
@@ -139,6 +151,12 @@ func main() {
 		log.Printf("bridge: companion mod not reachable over RCON yet (will retry on demand)")
 	}
 
+	// outQueue decouples the file-tailer (producer) from the actual Discord sends
+	// (consumer, started below once ctx exists) — see relay_queue.go. Without it, a slow
+	// or rate-limited Discord API call would stall onLine, which stalls the tailer, which
+	// lets the mod's events file grow arbitrarily far ahead with no bound on relay lag.
+	outQueue := newRelayQueue(relayQueueCapacity)
+
 	// Route an event to its channel and post it. With decoration on, integrator events
 	// (mts.*, …) render in an ANSI code block with their "[ns → event]" category label
 	// colored (deterministically per key) so categories are visually distinct; the rest of
@@ -148,7 +166,7 @@ func main() {
 		if !ok {
 			return
 		}
-		dc.Send(channel, renderEvent(ev, cfg.Discord.Embed))
+		outQueue.push(channel, renderEvent(ev, cfg.Discord.Embed))
 	}
 
 	// Mention resolver: populated once ctx is live, but declared here so onLine can close over it.
@@ -202,6 +220,7 @@ func main() {
 	defer requestRestart()
 	ctx, stop := signal.NotifyContext(baseCtx, syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	go outQueue.run(ctx, dc.Send)
 	go tail.Run(ctx, onLine)
 
 	// Permission monitor: check at startup and retry every 20s until all permissions are
@@ -269,12 +288,15 @@ func main() {
 
 	// Keep a Discord role / nickname in sync with linked players.
 	if (cfg.Discord.LinkedRoleID != "" || cfg.Discord.LinkedNickname != "") && cfg.Discord.GuildID != "" {
-		go syncLinkedMembers(ctx, rc, dc, cfg.Discord.GuildID, cfg.Discord.LinkedRoleID, cfg.Discord.LinkedNickname)
+		go syncLinkedMembers(ctx, rc, dc, ls, cfg.Discord.GuildID, cfg.Discord.LinkedRoleID, cfg.Discord.LinkedNickname)
 	}
 
 	// Watch the bridge↔Factorio link (RCON + mod handshake), update the channel topic,
-	// and optionally announce connect/disconnect transitions to Discord.
-	go monitorConnection(ctx, rc, func(connected bool, st odbStatus) {
+	// and optionally announce connect/disconnect transitions to Discord. initial is true
+	// only for the very first observation after startup — used to seed the channel-topic
+	// status without also posting a spurious "disconnected" chat message if Factorio just
+	// happens to be down when the bridge starts (see status.go).
+	go monitorConnection(ctx, rc, func(connected bool, st odbStatus, initial bool) {
 		now := time.Now()
 		if connected {
 			restoreLinks(rc, ls)
@@ -286,7 +308,7 @@ func main() {
 				sm.OnDisconnected(now)
 			}
 		}
-		if cfg.Discord.AnnounceStatus {
+		if cfg.Discord.AnnounceStatus && !(initial && !connected) {
 			if connected {
 				emit(Event{Event: "bridge.established", Data: map[string]any{"version": st.ModVersion}})
 			} else {
@@ -329,7 +351,7 @@ func main() {
 			GetConfig: func() controlapi.Config {
 				return getConfig(cfg, rt)
 			},
-			SetConfig: func(in controlapi.Config) error {
+			SetConfig: func(in controlapi.Config) (bool, error) {
 				return setConfig(cfg, rt, dc, in)
 			},
 			Restart: func() {
@@ -350,28 +372,24 @@ func main() {
 }
 
 // monitorConnection polls the RCON+mod handshake and reports connect/disconnect
-// transitions via announce. The initial state is announced only if connected (so a bridge
-// started before Factorio doesn't post a spurious "disconnected").
-func monitorConnection(ctx context.Context, rc *rcon.Client, announce func(connected bool, st odbStatus)) {
+// transitions via announce. The very first observation always announces (initial=true),
+// even when down, so a state consumer that needs to seed itself (e.g. the channel-topic
+// status) always gets at least one call; announce itself decides whether an initial-down
+// observation should also produce a user-visible "disconnected" notice.
+func monitorConnection(ctx context.Context, rc rconExecutor, announce func(connected bool, st odbStatus, initial bool)) {
 	ticker := time.NewTicker(15 * time.Second)
 	defer ticker.Stop()
 
 	var last *bool
 	check := func() {
 		st, ok := queryODBStatus(rc)
-		switch {
-		case last == nil:
-			if ok {
-				announce(true, st)
-			}
-			last = &ok
-		case *last != ok:
-			announce(ok, st)
-			*last = ok
+		if shouldAnnounce, initial := nextAnnounce(last, ok); shouldAnnounce {
+			announce(ok, st, initial)
 		}
+		last = &ok
 	}
 
-	check() // immediate, so a healthy start announces "established" right away
+	check() // immediate, so the first observation seeds state (and announces if healthy) right away
 	for {
 		select {
 		case <-ctx.Done():
@@ -380,6 +398,20 @@ func monitorConnection(ctx context.Context, rc *rcon.Client, announce func(conne
 			check()
 		}
 	}
+}
+
+// nextAnnounce reports whether the poll loop should announce the newly observed state ok,
+// given the previous observation last (nil = none yet — this is the very first poll since
+// startup). initial is true only for that first-ever observation: callers use it to decide
+// whether an initial-and-down observation should still produce a user-visible chat notice
+// (previously it wouldn't announce at all, so a state consumer that needs to seed itself —
+// e.g. the channel-topic status — never got called, leaving a stale "online" topic if
+// Factorio happened to be down when the bridge started).
+func nextAnnounce(last *bool, ok bool) (shouldAnnounce, initial bool) {
+	if last == nil {
+		return true, true
+	}
+	return *last != ok, false
 }
 
 // linkInfo is one player↔Discord mapping reported by /odb-status.
@@ -414,7 +446,7 @@ func generateDiscordLinkCode() string {
 // initiateDiscordLink handles the Discord-side !link (no code): generates a one-time code,
 // registers it in Factorio via RCON, then DMs the user the in-game command to complete linking.
 // Falls back to an in-channel mention if the user has DMs disabled.
-func initiateDiscordLink(rc *rcon.Client, dc *discord.Client, msg discord.InboundMessage) {
+func initiateDiscordLink(rc rconExecutor, dc *discord.Client, msg discord.InboundMessage) {
 	code := generateDiscordLinkCode()
 	rconCmd := fmt.Sprintf("/odb-register-discord-code %s %s %s",
 		code, sanitizeArg(msg.UserID), sanitizeArg(msg.User))
@@ -471,7 +503,7 @@ func (mr *mentionResolver) resolve(s string) string {
 }
 
 // syncMentions polls /odb-status every 20s to keep the mention cache fresh.
-func syncMentions(ctx context.Context, rc *rcon.Client, mr *mentionResolver) {
+func syncMentions(ctx context.Context, rc rconExecutor, mr *mentionResolver) {
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 	refresh := func() {
@@ -492,7 +524,7 @@ func syncMentions(ctx context.Context, rc *rcon.Client, mr *mentionResolver) {
 
 // queryLinks fetches the current player↔Discord links over RCON. ok=false means the mod
 // is unreachable (so callers should not churn Discord state during an outage).
-func queryLinks(rc *rcon.Client) ([]linkInfo, bool) {
+func queryLinks(rc rconExecutor) ([]linkInfo, bool) {
 	resp, err := rc.Execute("/odb-status")
 	if err != nil {
 		return nil, false
@@ -515,7 +547,15 @@ func nickFor(format string, l linkInfo) string {
 // players, polling /odb-status. Tracked in memory: it applies on a link transition and
 // reverts on unlink (while running). Errors (missing Manage Roles/Nicknames, role
 // hierarchy, guild owner) are logged and retried.
-func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client, guildID, roleID, nickFormat string) {
+//
+// ls is the bridge's persisted link store (survives Factorio restarts). It's consulted to
+// guard against a specific race: if Factorio restarts within a single ~15s
+// monitorConnection poll gap, the bridge never observes a disconnect→reconnect transition
+// (RCON just looks "still connected" on the next poll), so restoreLinks never runs for the
+// freshly-started map. The fresh map then reports zero links, which — left unchecked —
+// this function would read as "everyone unlinked" and strip every previously-linked
+// member's role/nickname. See handleZeroLinks below.
+func syncLinkedMembers(ctx context.Context, rc rconExecutor, dc *discord.Client, ls *linksStore, guildID, roleID, nickFormat string) {
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 
@@ -524,10 +564,14 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 	ownerID, _ := dc.GuildOwnerID(guildID)
 
 	seen := map[string]string{} // discord_id → factorio player name
+	restoredForGap := false     // guards against re-restoring on every zero-links poll
 	reconcile := func() {
 		links, ok := queryLinks(rc)
 		if !ok {
 			return
+		}
+		if handleZeroLinks(rc, ls, links, &restoredForGap) {
+			return // skip this cycle; wait for the restore to land and the next poll to see it
 		}
 		cur := make(map[string]linkInfo, len(links))
 		for _, l := range links {
@@ -584,6 +628,33 @@ func syncLinkedMembers(ctx context.Context, rc *rcon.Client, dc *discord.Client,
 	}
 }
 
+// handleZeroLinks detects a fresh Factorio session that skipped the disconnect→reconnect
+// transition (see syncLinkedMembers doc comment): the mod reports zero links even though
+// the bridge has persisted links on disk. When detected, it runs restoreLinks once and
+// reports true so the caller skips reconciling against the stale zero-links snapshot.
+//
+// restoredForGap debounces this to a single restore per detected gap: if links are still
+// zero on a later poll (restoreLinks either hasn't landed yet or everyone really is
+// unlinked), it does not restore again, so a genuine mass-unlink still reconciles normally
+// and this doesn't retry forever. It resets once links are non-zero again.
+func handleZeroLinks(rc rconExecutor, ls *linksStore, links []linkInfo, restoredForGap *bool) bool {
+	if len(links) > 0 {
+		*restoredForGap = false
+		return false
+	}
+	persisted := ls.all()
+	if len(persisted) == 0 {
+		return false // genuinely nothing to restore
+	}
+	if *restoredForGap {
+		return true // already tried once for this gap; let it reconcile as a real mass-unlink
+	}
+	log.Printf("linked-member: mod reports zero links but %d are persisted — restoring (likely missed a reconnect within the poll gap)", len(persisted))
+	restoreLinks(rc, ls)
+	*restoredForGap = true
+	return true
+}
+
 // odbStatus is the parsed result of an /odb-status RCON call.
 type odbStatus struct {
 	ModVersion string
@@ -593,7 +664,7 @@ type odbStatus struct {
 
 // queryODBStatus calls /odb-status and returns the parsed result.
 // ok=false means the mod is unreachable.
-func queryODBStatus(rc *rcon.Client) (odbStatus, bool) {
+func queryODBStatus(rc rconExecutor) (odbStatus, bool) {
 	resp, err := rc.Execute("/odb-status")
 	if err != nil {
 		return odbStatus{}, false
@@ -627,7 +698,7 @@ func handleLinkEvent(ls *linksStore, ev Event) {
 }
 
 // restoreLinks pushes all stored links into the mod via /odb-set-link after a connection.
-func restoreLinks(rc *rcon.Client, ls *linksStore) {
+func restoreLinks(rc rconExecutor, ls *linksStore) {
 	for _, l := range ls.all() {
 		cmd := fmt.Sprintf("/odb-set-link %s %s %s", l.Player, l.DiscordID, l.DiscordName)
 		if _, err := rc.Execute(cmd); err != nil {
@@ -655,7 +726,7 @@ func handleStatusEvent(sm *status.Manager, ev Event, joinEvent, leftEvent string
 
 // roundTrip backs POST /v1/test: post a message to each bridged channel (outbound)
 // and inject one into the game over RCON (inbound).
-func roundTrip(dc *discord.Client, rc *rcon.Client, channels []string) controlapi.TestResult {
+func roundTrip(dc *discord.Client, rc rconExecutor, channels []string) controlapi.TestResult {
 	var res controlapi.TestResult
 
 	var sendErr error
@@ -705,34 +776,50 @@ func getConfig(cfg *config.Config, rt *router.Router) controlapi.Config {
 
 // setConfig backs POST /v1/config. Routing is applied live; runtime-immutable fields
 // (transport, events_file, rcon address) are rejected if a change is requested — those
-// require a restart with an updated config file.
-func setConfig(cfg *config.Config, rt *router.Router, dc *discord.Client, in controlapi.Config) error {
+// require a restart with an updated config file. On success it also tries to persist the
+// new routes to the config file (see config.UpdateRoutesFile) so the change survives a
+// restart; the returned bool reports whether that persistence actually happened (it can't
+// in env-var config mode, since there's no file to write to — the caller should surface
+// that as memory-only-until-restart rather than fail the request, since the live change
+// already took effect).
+func setConfig(cfg *config.Config, rt *router.Router, dc *discord.Client, in controlapi.Config) (bool, error) {
 	if in.Transport != "" && in.Transport != cfg.Transport {
-		return fmt.Errorf("transport cannot be changed at runtime; restart with an updated config")
+		return false, fmt.Errorf("transport cannot be changed at runtime; restart with an updated config")
 	}
 	if in.Factorio.EventsFile != "" && in.Factorio.EventsFile != cfg.Factorio.EventsFile {
-		return fmt.Errorf("factorio.events_file cannot be changed at runtime")
+		return false, fmt.Errorf("factorio.events_file cannot be changed at runtime")
 	}
 	if in.Factorio.RconAddress != "" && in.Factorio.RconAddress != cfg.Factorio.RCON.Address {
-		return fmt.Errorf("factorio.rcon_address cannot be changed at runtime")
+		return false, fmt.Errorf("factorio.rcon_address cannot be changed at runtime")
 	}
 	if len(in.Discord.Routes) == 0 {
-		return fmt.Errorf("discord.routes must not be empty")
+		return false, fmt.Errorf("discord.routes must not be empty")
 	}
 	routes := make([]router.Route, len(in.Discord.Routes))
+	configRoutes := make([]config.Route, len(in.Discord.Routes))
 	for i, r := range in.Discord.Routes {
 		if r.Source == "" || r.ChannelID == "" {
-			return fmt.Errorf("discord.routes[%d] needs both source and channel_id", i)
+			return false, fmt.Errorf("discord.routes[%d] needs both source and channel_id", i)
 		}
 		routes[i] = router.Route{Source: r.Source, ChannelID: r.ChannelID}
+		configRoutes[i] = config.Route{Source: r.Source, ChannelID: r.ChannelID}
 	}
 	rt.Update(routes)
 	dc.UpdateInbound(rt.InboundChannels())
-	return nil
+
+	if cfg.FilePath == "" {
+		log.Printf("controlapi: routes updated in memory only — running in env-var config mode, no config file to persist to")
+		return false, nil
+	}
+	if err := config.UpdateRoutesFile(cfg.FilePath, configRoutes); err != nil {
+		log.Printf("controlapi: routes applied live but failed to persist to %s: %v", cfg.FilePath, err)
+		return false, nil
+	}
+	return true, nil
 }
 
 // buildStatus assembles a live GET /v1/status snapshot.
-func buildStatus(cfg *config.Config, dc *discord.Client, rc *rcon.Client, lastEventUnix int64) controlapi.Status {
+func buildStatus(cfg *config.Config, dc *discord.Client, rc rconExecutor, lastEventUnix int64) controlapi.Status {
 	fs := controlapi.FactorioStatus{
 		RconAddress:        cfg.Factorio.RCON.Address,
 		RequiredModVersion: cfg.Factorio.RequiredModVersion,
@@ -879,31 +966,33 @@ func kvSummary(data map[string]any) string {
 }
 
 // runCommand executes a configured command (shared by the text and slash paths) and
-// returns the reply text to post ("" = nothing to post). Enforces admin gating and, for
-// args:true commands, interpolation + a usage hint.
-func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string, user, userID string) string {
+// returns the reply text to post ("" = nothing to post) plus any RCON error. Callers must
+// surface a non-nil error to the user rather than silently dropping it — a "Done." or no
+// response at all would otherwise mask a real failure as success. Enforces admin gating
+// and, for args:true commands, interpolation + a usage hint.
+func runCommand(rc rconExecutor, cmd config.Command, isAdmin bool, argv []string, user, userID string) (string, error) {
 	if cmd.Admin && !isAdmin {
-		return fmt.Sprintf(":no_entry: `%s` is admin-only.", cmd.Trigger)
+		return fmt.Sprintf(":no_entry: `%s` is admin-only.", cmd.Trigger), nil
 	}
 	rconCmd := cmd.Rcon
 	if cmd.Args {
 		if templateNeedsArgs(cmd.Rcon) && len(argv) == 0 {
 			if cmd.UsageHint != "" {
-				return cmd.UsageHint
+				return cmd.UsageHint, nil
 			}
-			return fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger)
+			return fmt.Sprintf("Usage: `%s <args>`", cmd.Trigger), nil
 		}
 		rconCmd = interpolate(cmd.Rcon, argv, user, userID)
 	}
 	resp, err := rc.Execute(rconCmd)
 	if err != nil {
 		log.Printf("rcon: command %q failed: %v", cmd.Trigger, err)
-		return ""
+		return "", err
 	}
 	if strings.TrimSpace(resp) != "" {
-		return "```\n" + resp + "\n```"
+		return "```\n" + resp + "\n```", nil
 	}
-	return ""
+	return "", nil
 }
 
 // buildSlash maps configured commands to slash-command specs (deduped by sanitized name)

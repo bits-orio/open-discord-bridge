@@ -21,6 +21,12 @@ type InboundMessage struct {
 // InboundFunc is called when a human posts in one of the bridged channels.
 type InboundFunc func(InboundMessage)
 
+// inboundQueueCapacity bounds the Discord→game relay queue. Sized generously for a human
+// chat burst; if a producer ever fills it, the send blocks (backpressure) rather than
+// dropping — these are deliberate user messages/commands, not a high-volume event firehose
+// (contrast with the outbound event-relay queue in cmd/bridge, which drops-oldest instead).
+const inboundQueueCapacity = 128
+
 type Client struct {
 	session   *discordgo.Session
 	onMsg     InboundFunc
@@ -32,6 +38,16 @@ type Client struct {
 	guildID    string
 	slashSpecs []SlashSpec
 	onSlash    SlashFunc
+
+	// inboundQueue + the worker started in Open give Discord→game relay a FIFO guarantee:
+	// discordgo dispatches each MessageCreate on its own goroutine (see handle in
+	// bwmarrin/discordgo/event.go), so calling onMsg directly from handleMessage — which
+	// does a synchronous RCON round-trip — let concurrent goroutines finish (and relay) out
+	// of the order messages actually arrived in. handleMessage now only enqueues (cheap,
+	// so the race window shrinks to a struct build + channel send); a single worker drains
+	// the queue and calls onMsg one at a time, in enqueue order.
+	inboundQueue chan InboundMessage
+	stopInbound  chan struct{}
 }
 
 // SlashSpec describes a slash command to register. Admin gates it via Discord's own
@@ -53,8 +69,10 @@ type SlashInvocation struct {
 	IsAdmin bool
 }
 
-// SlashFunc handles a slash command and returns the reply text ("" → a generic "Done.").
-type SlashFunc func(SlashInvocation) string
+// SlashFunc handles a slash command and returns the reply text ("" → a generic "Done.")
+// plus any error from running it. A non-nil error is shown to the user instead of the
+// reply text, so a real failure isn't masked as a silent "Done.".
+type SlashFunc func(SlashInvocation) (string, error)
 
 func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, error) {
 	s, err := discordgo.New("Bot " + token)
@@ -64,7 +82,12 @@ func New(token string, inboundChannels []string, onMsg InboundFunc) (*Client, er
 	// Guilds intent populates guild/role/channel state (needed to compute admin perms).
 	s.Identify.Intents = discordgo.IntentGuilds | discordgo.IntentsGuildMessages | discordgo.IntentMessageContent
 
-	c := &Client{session: s, onMsg: onMsg, inbound: map[string]bool{}}
+	c := &Client{
+		session:      s,
+		onMsg:        onMsg,
+		inbound:      map[string]bool{},
+		inboundQueue: make(chan InboundMessage, inboundQueueCapacity),
+	}
 	c.UpdateInbound(inboundChannels)
 	s.AddHandler(c.handleMessage)
 	return c, nil
@@ -95,12 +118,27 @@ func (c *Client) Open() error {
 		return err
 	}
 	c.connected = true
+	c.stopInbound = make(chan struct{})
+	go c.runInboundWorker(c.stopInbound)
 	if len(c.slashSpecs) > 0 && c.guildID != "" {
 		if err := c.registerSlash(); err != nil {
 			fmt.Printf("discord: slash command registration failed: %v\n", err)
 		}
 	}
 	return nil
+}
+
+// runInboundWorker drains the inbound queue and dispatches to onMsg one at a time, in the
+// order messages were queued — see the inboundQueue field doc for why this exists.
+func (c *Client) runInboundWorker(stop chan struct{}) {
+	for {
+		select {
+		case <-stop:
+			return
+		case msg := <-c.inboundQueue:
+			c.onMsg(msg)
+		}
+	}
 }
 
 func (c *Client) registerSlash() error {
@@ -155,18 +193,51 @@ func (c *Client) handleInteraction(_ *discordgo.Session, i *discordgo.Interactio
 		}
 	}
 
-	reply := c.onSlash(inv)
-	if reply == "" {
+	interaction := i.Interaction
+	runSlashInteraction(inv, c.onSlash,
+		func() error {
+			return c.session.InteractionRespond(interaction, &discordgo.InteractionResponse{
+				Type: discordgo.InteractionResponseDeferredChannelMessageWithSource,
+			})
+		},
+		func(content string) error {
+			_, err := c.session.InteractionResponseEdit(interaction, &discordgo.WebhookEdit{Content: &content})
+			return err
+		},
+	)
+}
+
+// runSlashInteraction runs the full deferred-response flow for a slash command: acknowledge
+// immediately (ack), so Discord's 3s interaction window can't be blown by a slow RCON
+// round-trip, then run the command via runCmd, then edit in the real reply (edit). ack and
+// edit are injected so this can be unit tested without a live discordgo session.
+//
+// A runCmd error is shown to the user (never silently collapsed to "Done.", which would
+// mask a real failure as a fake success); "" with no error means the command genuinely had
+// nothing to report, which does get the generic "Done.".
+func runSlashInteraction(inv SlashInvocation, runCmd SlashFunc, ack func() error, edit func(content string) error) {
+	if err := ack(); err != nil {
+		fmt.Printf("discord: defer interaction response failed: %v\n", err)
+		return // no ack landed, so a follow-up edit would be invalid anyway
+	}
+	reply, err := runCmd(inv)
+	switch {
+	case err != nil:
+		reply = fmt.Sprintf(":warning: Command failed: %s", err.Error())
+	case reply == "":
 		reply = "Done."
 	}
-	_ = c.session.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
-		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: reply},
-	})
+	if err := edit(reply); err != nil {
+		fmt.Printf("discord: edit interaction response failed: %v\n", err)
+	}
 }
 
 func (c *Client) Close() error {
 	c.connected = false
+	if c.stopInbound != nil {
+		close(c.stopInbound)
+		c.stopInbound = nil
+	}
 	return c.session.Close()
 }
 
@@ -425,14 +496,17 @@ func (c *Client) handleMessage(_ *discordgo.Session, m *discordgo.MessageCreate)
 	if m.Member != nil {
 		roles = m.Member.Roles
 	}
-	c.onMsg(InboundMessage{
+	// Enqueue rather than call onMsg directly — see the inboundQueue field doc. This keeps
+	// the work done on discordgo's per-event goroutine minimal, which shrinks the ordering
+	// race window down to "build this struct and send it" instead of a full RCON round-trip.
+	c.inboundQueue <- InboundMessage{
 		User:      messageDisplayName(m),
 		UserID:    m.Author.ID,
 		Roles:     roles,
 		Message:   m.Content,
 		ChannelID: m.ChannelID,
 		IsAdmin:   c.authorIsAdmin(m),
-	})
+	}
 }
 
 // messageDisplayName prefers the server nickname, then the global display name, then the

@@ -36,12 +36,18 @@ type Config struct {
 	LogFile      string           `yaml:"log_file"` // also write logs here (default: bridge.log next to events; "-" = stderr only)
 	Discord      DiscordConfig    `yaml:"discord"`
 	ControlAPI   ControlAPIConfig `yaml:"control_api"`
+
+	// FilePath is the config file this was loaded from ("" when loaded from env vars —
+	// see LoadFromEnv). Used to persist runtime config changes (e.g. POST /v1/config
+	// routing updates) back to disk so they survive a restart; env-var mode has no file
+	// to write to, so such changes stay in-memory-only until the env vars are updated too.
+	FilePath string `yaml:"-"`
 }
 
 type FactorioConfig struct {
 	RCON               RCONConfig `yaml:"rcon"`
-	EventsFile         string     `yaml:"events_file"`  // local path, or remote path for sftp
-	LinksFile          string     `yaml:"links_file"`   // local path for persistent links (default: links.json next to binary)
+	EventsFile         string     `yaml:"events_file"` // local path, or remote path for sftp
+	LinksFile          string     `yaml:"links_file"`  // local path for persistent links (default: links.json next to binary)
 	RequiredModVersion string     `yaml:"required_mod_version"`
 	SFTP               SFTPConfig `yaml:"sftp"`
 }
@@ -70,19 +76,19 @@ type RCONConfig struct {
 }
 
 type DiscordConfig struct {
-	TokenEnv            string      `yaml:"token_env"`
-	Token               string      `yaml:"-"` // resolved from env at load time
-	GuildID             string      `yaml:"guild_id"`
-	Embed               bool        `yaml:"embed"`                  // color integrator-event category labels via an ANSI code block
-	AnnounceStatus      bool        `yaml:"announce_status"`        // post bridge.established/disconnected to Discord
-	ChannelTopicStatus         *bool       `yaml:"channel_topic_status"`          // keep channel topic in sync with server state (default true)
-	StatusPlayerJoinedEvent    string      `yaml:"status_player_joined_event"`    // event key for player joins (default: vanilla.player_joined)
-	StatusPlayerLeftEvent      string      `yaml:"status_player_left_event"`      // event key for player leaves (default: vanilla.player_left)
-	LinkedRoleID        string      `yaml:"linked_role_id"`         // role kept in sync with linked players
-	LinkedNickname      string      `yaml:"linked_nickname"`        // nickname format for linked members ({factorio}/{discord})
-	Routes         []Route     `yaml:"routes"`
-	Admins         AdminConfig `yaml:"admins"`
-	Commands       []Command   `yaml:"commands"`
+	TokenEnv                string      `yaml:"token_env"`
+	Token                   string      `yaml:"-"` // resolved from env at load time
+	GuildID                 string      `yaml:"guild_id"`
+	Embed                   bool        `yaml:"embed"`                      // color integrator-event category labels via an ANSI code block
+	AnnounceStatus          bool        `yaml:"announce_status"`            // post bridge.established/disconnected to Discord
+	ChannelTopicStatus      *bool       `yaml:"channel_topic_status"`       // keep channel topic in sync with server state (default true)
+	StatusPlayerJoinedEvent string      `yaml:"status_player_joined_event"` // event key for player joins (default: vanilla.player_joined)
+	StatusPlayerLeftEvent   string      `yaml:"status_player_left_event"`   // event key for player leaves (default: vanilla.player_left)
+	LinkedRoleID            string      `yaml:"linked_role_id"`             // role kept in sync with linked players
+	LinkedNickname          string      `yaml:"linked_nickname"`            // nickname format for linked members ({factorio}/{discord})
+	Routes                  []Route     `yaml:"routes"`
+	Admins                  AdminConfig `yaml:"admins"`
+	Commands                []Command   `yaml:"commands"`
 }
 
 type Route struct {
@@ -109,12 +115,12 @@ func (a AdminConfig) PermissionFallback() bool {
 // the bridge runs, posting the reply back. Admins choose exactly which commands exist.
 // Rcon may be multiline (e.g. a /silent-command script). Admin gates it to Discord admins.
 type Command struct {
-	Trigger   string `yaml:"trigger"`
-	Rcon      string `yaml:"rcon"`
-	Admin     bool   `yaml:"admin"`
-	Args      bool   `yaml:"args"`       // opt-in: interpolate {args}/{1}.../{user} from the message
-	UsageHint    string `yaml:"usage_hint"`    // shown instead of generic "Usage:" when args are missing
-	DiscordLink  bool   `yaml:"discord_link"`  // when typed with no code, initiate the Discord→game reverse linking flow
+	Trigger     string `yaml:"trigger"`
+	Rcon        string `yaml:"rcon"`
+	Admin       bool   `yaml:"admin"`
+	Args        bool   `yaml:"args"`         // opt-in: interpolate {args}/{1}.../{user} from the message
+	UsageHint   string `yaml:"usage_hint"`   // shown instead of generic "Usage:" when args are missing
+	DiscordLink bool   `yaml:"discord_link"` // when typed with no code, initiate the Discord→game reverse linking flow
 }
 
 // Load reads and validates configuration. If the config file is absent, it builds the
@@ -167,6 +173,7 @@ func Load(path string) (*Config, error) {
 	if err := c.validate(); err != nil {
 		return nil, err
 	}
+	c.FilePath = path
 	return &c, nil
 }
 
@@ -241,16 +248,16 @@ func LoadFromEnv() (*Config, error) {
 			},
 		},
 		Discord: DiscordConfig{
-			TokenEnv:       "DISCORD_BOT_TOKEN",
-			Token:          os.Getenv("DISCORD_BOT_TOKEN"),
-			GuildID:        os.Getenv("ODB_DISCORD_GUILD_ID"),
-			Embed:               parseBool(os.Getenv("ODB_EMBED")),
-			AnnounceStatus:      parseBool(os.Getenv("ODB_ANNOUNCE_STATUS")),
-			ChannelTopicStatus:         optBool(os.Getenv("ODB_CHANNEL_TOPIC_STATUS")),
-			StatusPlayerJoinedEvent:    os.Getenv("ODB_STATUS_PLAYER_JOINED_EVENT"),
-			StatusPlayerLeftEvent:      os.Getenv("ODB_STATUS_PLAYER_LEFT_EVENT"),
-			LinkedRoleID:   os.Getenv("ODB_LINKED_ROLE_ID"),
-			LinkedNickname: os.Getenv("ODB_LINKED_NICKNAME"),
+			TokenEnv:                "DISCORD_BOT_TOKEN",
+			Token:                   os.Getenv("DISCORD_BOT_TOKEN"),
+			GuildID:                 os.Getenv("ODB_DISCORD_GUILD_ID"),
+			Embed:                   parseBool(os.Getenv("ODB_EMBED")),
+			AnnounceStatus:          parseBool(os.Getenv("ODB_ANNOUNCE_STATUS")),
+			ChannelTopicStatus:      optBool(os.Getenv("ODB_CHANNEL_TOPIC_STATUS")),
+			StatusPlayerJoinedEvent: os.Getenv("ODB_STATUS_PLAYER_JOINED_EVENT"),
+			StatusPlayerLeftEvent:   os.Getenv("ODB_STATUS_PLAYER_LEFT_EVENT"),
+			LinkedRoleID:            os.Getenv("ODB_LINKED_ROLE_ID"),
+			LinkedNickname:          os.Getenv("ODB_LINKED_NICKNAME"),
 			Admins: AdminConfig{
 				Roles:                splitCSV(os.Getenv("ODB_ADMIN_ROLES")),
 				Users:                splitCSV(os.Getenv("ODB_ADMIN_USERS")),
