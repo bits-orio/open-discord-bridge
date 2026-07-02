@@ -79,14 +79,10 @@ func main() {
 			}
 			return
 		}
-		payload, _ := json.Marshal(map[string]string{
-			"user":    msg.User,
-			"user_id": msg.UserID,
-			"message": msg.Message,
-			"channel": msg.ChannelID,
-		})
-		if _, err := rc.Execute("/odb-incoming " + string(payload)); err != nil {
-			log.Printf("rcon: inbound deliver failed: %v", err)
+		for _, cmd := range incomingCommands(msg.User, msg.UserID, msg.Message, msg.ChannelID) {
+			if _, err := rc.Execute(cmd); err != nil {
+				log.Printf("rcon: inbound deliver failed: %v", err)
+			}
 		}
 	}
 
@@ -925,7 +921,10 @@ func runCommand(rc *rcon.Client, cmd config.Command, isAdmin bool, argv []string
 		return ""
 	}
 	if strings.TrimSpace(resp) != "" {
-		return "```\n" + resp + "\n```"
+		// Cap the inner text so the closing fence survives Post's outer content cap —
+		// otherwise a long RCON reply truncates mid-fence and renders unterminated.
+		const fenceOverhead = 8 // len("```\n") + len("\n```")
+		return "```\n" + discord.Truncate(resp, discord.MaxContentLen-fenceOverhead) + "\n```"
 	}
 	return ""
 }

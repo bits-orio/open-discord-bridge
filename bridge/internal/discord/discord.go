@@ -161,7 +161,7 @@ func (c *Client) handleInteraction(_ *discordgo.Session, i *discordgo.Interactio
 	}
 	_ = c.session.InteractionRespond(i.Interaction, &discordgo.InteractionResponse{
 		Type: discordgo.InteractionResponseChannelMessageWithSource,
-		Data: &discordgo.InteractionResponseData{Content: reply},
+		Data: &discordgo.InteractionResponseData{Content: truncateContent(reply)},
 	})
 }
 
@@ -182,10 +182,12 @@ var noMentions = &discordgo.MessageAllowedMentions{Parse: []discordgo.AllowedMen
 // Post sends a message with all mentions suppressed and returns any error. This is the
 // general-purpose send used for game-chat relay and bridge notifications alike; neither
 // should ping @everyone/@here/roles/users based on message content. Use PostMentioning for
-// the rare case of an intentional, specific ping.
+// the rare case of an intentional, specific ping. Content over Discord's 2000-character
+// limit is truncated first (see truncateContent) so nothing reaches the API oversized and
+// gets rejected outright with a silently-dropped HTTP 400.
 func (c *Client) Post(channelID, content string) error {
 	_, err := c.session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Content:         content,
+		Content:         truncateContent(content),
 		AllowedMentions: noMentions,
 	})
 	return err
@@ -204,7 +206,7 @@ func (c *Client) Send(channelID, content string) {
 // suppressed even if the content contains their syntax.
 func (c *Client) PostMentioning(channelID, content string, userIDs ...string) error {
 	_, err := c.session.ChannelMessageSendComplex(channelID, &discordgo.MessageSend{
-		Content: content,
+		Content: truncateContent(content),
 		AllowedMentions: &discordgo.MessageAllowedMentions{
 			Parse: []discordgo.AllowedMentionType{},
 			Users: userIDs,
@@ -388,7 +390,7 @@ func (c *Client) SendDM(userID, content string) error {
 		return err
 	}
 	_, err = c.session.ChannelMessageSendComplex(ch.ID, &discordgo.MessageSend{
-		Content:         content,
+		Content:         truncateContent(content),
 		AllowedMentions: noMentions,
 	})
 	return err
