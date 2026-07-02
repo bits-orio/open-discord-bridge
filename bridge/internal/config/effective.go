@@ -24,7 +24,8 @@ const EffectiveConfigName = "bridge.effective.yaml"
 type Meta struct {
 	Mode       string // "file" or "env"
 	ConfigPath string // the -config path that was checked (may not exist in env mode)
-	Forced     bool   // env mode forced via ODB_CONFIG=none despite a config file existing
+	Forced     bool   // ODB_CONFIG=none is set (env mode guaranteed even if a config file appears)
+	FileExists bool   // a file was present at ConfigPath
 	Warnings   []string
 	Validation error // nil when the config validated OK
 }
@@ -33,8 +34,10 @@ func (m Meta) modeLine() string {
 	switch {
 	case m.Mode == "file":
 		return fmt.Sprintf("file mode (%s)", m.ConfigPath)
-	case m.Forced:
+	case m.Forced && m.FileExists:
 		return fmt.Sprintf("env-var mode (ODB_CONFIG=none — ignoring existing %q)", m.ConfigPath)
+	case m.Forced:
+		return fmt.Sprintf("env-var mode (ODB_CONFIG=none; no file at %q either)", m.ConfigPath)
 	case m.ConfigPath != "":
 		return fmt.Sprintf("env-var mode (no file at %q)", m.ConfigPath)
 	default:

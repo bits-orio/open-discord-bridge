@@ -127,7 +127,7 @@ type Command struct {
 func Load(path string) (*Config, error) {
 	_, statErr := os.Stat(path)
 	if forced := strings.EqualFold(os.Getenv("ODB_CONFIG"), "none"); forced || errors.Is(statErr, fs.ErrNotExist) {
-		return loadFromEnv(Meta{Mode: "env", ConfigPath: path, Forced: forced && statErr == nil})
+		return loadFromEnv(Meta{Mode: "env", ConfigPath: path, Forced: forced, FileExists: statErr == nil})
 	}
 
 	b, err := os.ReadFile(path)

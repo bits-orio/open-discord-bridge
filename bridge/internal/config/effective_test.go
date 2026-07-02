@@ -133,6 +133,21 @@ discord:
 	}
 }
 
+func TestForcedEnvModeWithoutFileStatesTheGuard(t *testing.T) {
+	t.Chdir(t.TempDir())
+	setEnvMode(t)
+	t.Setenv("ODB_CONFIG", "none")
+
+	// No config file exists; the header must still show the guard is active, so
+	// "forced, no file" and "unguarded, no file" are distinguishable.
+	if _, err := Load("/no/such/bridge.yaml"); err != nil {
+		t.Fatalf("forced env mode: %v", err)
+	}
+	if out := readEffective(t); !strings.Contains(out, "ODB_CONFIG=none; no file") {
+		t.Fatalf("effective config should state the ODB_CONFIG=none guard even without a file:\n%s", out)
+	}
+}
+
 func TestForcedEnvModeIgnoresConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
