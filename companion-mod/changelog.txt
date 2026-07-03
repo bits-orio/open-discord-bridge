@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.11
+Date: 2026-07-02
+  Info:
+    - AleForge now offers Open Discord Bridge as a first-class panel integration - the first
+      hosting provider to do so. An illustrated end-user setup guide (Discord bot creation to
+      verified two-way chat, no coding required) is at docs/aleforge/SETUP.md in the repo.
+    - Community Discord server linked from the README and mod description.
+    - Documentation-only release: the mod and bridge behave identically to 0.1.10.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.10
 Date: 2026-07-02
   Changes:
