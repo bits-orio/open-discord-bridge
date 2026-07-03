@@ -12,6 +12,8 @@ messages back into the game. Works on a vanilla server, and lets other mods
 >
 > # → https://github.com/bits-orio/open-discord-bridge
 
+Questions, help, or just showing off your setup — join the Discord: https://discord.gg/tWz4FT74pH
+
 ## Setup in three steps
 
 1. **Install this mod** (you've done this — or get it from the in-game mod browser).

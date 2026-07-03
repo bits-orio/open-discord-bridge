@@ -3,6 +3,8 @@
 Mirror your Factorio server's chat and events to a Discord channel — and relay Discord
 messages back into the game. Two-way, in real time, achievement-safe.
 
+[![Discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/tWz4FT74pH)
+
 ![In-game chat and events flowing into a Discord channel](https://raw.githubusercontent.com/bits-orio/open-discord-bridge/main/docs/aleforge/images/18-verify-game-to-discord.png)
 
 ## ⚠️ This mod needs a small companion program
@@ -67,5 +69,7 @@ it, not the other way around. API docs and copy-paste patterns:
 https://github.com/bits-orio/open-discord-bridge/blob/main/companion-mod/README.md
 
 ---
+
+Join the Discord: https://discord.gg/tWz4FT74pH
 
 Bug reports and feature requests: https://github.com/bits-orio/open-discord-bridge/issues
