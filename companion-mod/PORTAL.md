@@ -16,8 +16,9 @@ every hosting style are on GitHub:
 
 → https://github.com/bits-orio/open-discord-bridge
 
-**Playing on AleForge?** The bridge is built into their panel — toggle it on, paste your
-bot token and channel ID, reinstall, done. Follow the illustrated 10–15 minute guide:
+**Playing on [AleForge](https://aleforge.net/factorio/)?** The bridge is built into their
+panel — toggle it on, paste your bot token and channel ID, reinstall, done. Follow the
+illustrated 10–15 minute guide:
 https://github.com/bits-orio/open-discord-bridge/blob/main/docs/aleforge/SETUP.md
 
 ## What you get out of the box
@@ -52,7 +53,7 @@ https://github.com/bits-orio/open-discord-bridge/blob/main/docs/aleforge/SETUP.m
 
 ## Hosting options
 
-- **AleForge** — first-class panel integration (guide above). The first host to ship it;
+- **[AleForge](https://aleforge.net/factorio/)** — first-class panel integration (guide above). The first host to ship it;
   others will follow.
 - **Self-host** — download the binary, run the setup wizard:
   https://github.com/bits-orio/open-discord-bridge/blob/main/QUICKSTART.md
