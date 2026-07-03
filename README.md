@@ -26,6 +26,9 @@ code.
 > channel ID, reinstall — done. No shell, no config files. Special thanks to **Wraith**
 > from the AleForge team for the patience and the many rounds of debugging it took to get
 > the integration right end to end. Others will follow; AleForge was first.
+>
+> Hosting provider interested in offering ODB on your platform? Reach out to **bitsorio**
+> on the [Discord server](https://discord.gg/tWz4FT74pH) — happy to help you integrate.
 
 If your server runs on AleForge, the illustrated, screenshot-by-screenshot
 **[AleForge setup guide](docs/aleforge/SETUP.md)** takes you from "no bot" to verified
