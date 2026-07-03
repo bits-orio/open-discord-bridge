@@ -112,7 +112,20 @@ local function ensure_storage()
   storage.odb.pending          = storage.odb.pending or {}          -- game-initiated: link code -> { player, expires }
   storage.odb.discord_pending  = storage.odb.discord_pending or {}  -- discord-initiated: link code -> { discord_id, discord_name, expires }
   storage.odb.baseline_disabled = storage.odb.baseline_disabled or {} -- vanilla event key -> true
-  storage.odb.rocket_last_announced = storage.odb.rocket_last_announced or {} -- force name -> tick
+  -- force name -> last announced launch MARK. Seeded from each force's current
+  -- total on FIRST creation (fresh install / migration) so adding or updating the
+  -- mod on a live save doesn't re-announce the current neighbourhood -- it stays
+  -- quiet until the next genuine mark. New forces start at 0 (no launches yet).
+  -- Mirrors multi-team-support's identical seed so the two mods behave the same.
+  if not storage.odb.rocket_announced_total then
+    storage.odb.rocket_announced_total = {}
+    for _, force in pairs(game.forces) do
+      if force.valid and (force.rockets_launched or 0) > 0 then
+        storage.odb.rocket_announced_total[force.name] = force.rockets_launched
+      end
+    end
+  end
+  storage.odb.rocket_last_announced = nil -- migrated from the old tick-based throttle
 end
 
 -- baseline emits a built-in vanilla.* event unless an integrator has disabled that key via
@@ -551,28 +564,73 @@ script.on_event(defines.events.on_player_died, function(e)
   baseline("player_died", { player = player.name, cause = cause }, player.surface.name)
 end)
 
--- Space Age's automated cargo rockets can launch repeatedly in quick succession once a
--- silo/force has the logistics for it, which would otherwise flood Discord with one
--- message per launch. Cap baseline announcements to one per force per cooldown window.
-local ROCKET_ANNOUNCE_COOLDOWN_TICKS = 60 * 60 -- 60s
+-- Space Age's automated cargo rockets can launch repeatedly in quick succession,
+-- which would otherwise flood Discord with one message per launch. The
+-- announcement cadence WIDENS in tiers as a force's running total grows, so the
+-- post rate stays bounded no matter how big the base gets. This mirrors
+-- multi-team-support's rocket throttle so a server running both mods behaves
+-- identically:
+--
+--   total ≤ 10     every launch
+--   total ≤ 100    one per 5
+--   total ≤ 500    one per 25
+--   total ≤ 1000   one per 50
+--   total > 1000   one per 100   (terminal cadence, forever)
+--
+-- A 45k-launch megabase posts once every ~100 rockets. Count-based (not the old
+-- time-based cooldown) so the cadence tracks progress, not wall-clock.
+local ROCKET_TIERS = {
+  { upto = 10,        step = 1   },
+  { upto = 100,       step = 5   },
+  { upto = 500,       step = 25  },
+  { upto = 1000,      step = 50  },
+  { upto = math.huge, step = 100 },
+}
 
-local function rocket_announce_allowed(force_name)
-  storage.odb.rocket_last_announced = storage.odb.rocket_last_announced or {}
-  local last = storage.odb.rocket_last_announced[force_name]
-  if last and game.tick - last < ROCKET_ANNOUNCE_COOLDOWN_TICKS then
-    return false
+--- The announcement step for a given running total (see ROCKET_TIERS).
+local function rocket_announce_step(total)
+  for _, tier in ipairs(ROCKET_TIERS) do
+    if total <= tier.upto then return tier.step end
   end
-  storage.odb.rocket_last_announced[force_name] = game.tick
-  return true
+  return 100 -- unreachable: the math.huge tier catches everything; defensive
+end
+
+-- Report the HIGHEST step-multiple the counter has reached that hasn't been
+-- announced yet, rather than testing total % step == 0. force.rockets_launched
+-- skips and duplicates values when several rockets resolve close together, so a
+-- plain exact-multiple test goes silent (skipped multiple) or double-posts
+-- (duplicated multiple); and reporting the raw overshoot reads untidy.
+-- floor(total/step)*step is the highest multiple reached; report it when it
+-- exceeds the last reported mark (stored as `last`). The feed never goes silent,
+-- never double-posts, always lands on a step multiple past 10 (…45300, 45400) —
+-- ending in 0 or 5 — and a fresh install / reset on an already-huge force jumps
+-- straight to the current neighbourhood instead of crawling up from a low number.
+-- Mirrors multi-team-support's rocket_announce_mark exactly. Returns the mark, or nil.
+local function rocket_announce_mark(force_name, total)
+  storage.odb.rocket_announced_total = storage.odb.rocket_announced_total or {}
+  local last = storage.odb.rocket_announced_total[force_name] or 0
+  local mark
+  if total < last then                 -- counter reset (force recreated): re-arm on raw count
+    mark = total
+  elseif total <= 10 then              -- pre-alignment tier: every launch, raw count
+    mark = (total > last) and total or nil
+  else
+    local step = rocket_announce_step(total)
+    local m = math.floor(total / step) * step   -- highest step multiple the counter has reached
+    mark = (m > last) and m or nil
+  end
+  if mark then storage.odb.rocket_announced_total[force_name] = mark end
+  return mark
 end
 
 script.on_event(defines.events.on_rocket_launched, function(e)
   local rocket = e.rocket
   if not (rocket and rocket.valid) then return end
-  if not rocket_announce_allowed(rocket.force.name) then return end
+  local mark = rocket_announce_mark(rocket.force.name, rocket.force.rockets_launched)
+  if not mark then return end
   baseline("rocket_launched", {
     surface       = rocket.surface.name,
-    flight_count  = rocket.force.rockets_launched,
+    flight_count  = mark,
   }, rocket.surface.name)
 end)
 
