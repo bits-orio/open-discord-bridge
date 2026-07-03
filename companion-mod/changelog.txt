@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.12
+Date: 2026-07-03
+  Changes:
+    - Rocket-launch announcements now scale in tiers as a force's launch total grows -- every launch
+      up to 10, then one per 5 to 100, per 25 to 500, per 50 to 1000, and one per 100 after that --
+      instead of a fixed 60-second cooldown. Each announcement lands on a round multiple (…45300,
+      45400), so a megabase no longer floods the channel. The per-force tracker is seeded from the
+      current launch total when the mod is added, so it doesn't re-announce the current total on
+      first load.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.11
 Date: 2026-07-02
   Info:
