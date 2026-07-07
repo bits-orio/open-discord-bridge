@@ -11,8 +11,25 @@ permissions:
   packages: write # push images to GHCR
 
 jobs:
+  # Gate both other jobs on the tag actually matching companion-mod/info.json —
+  # without this, `images` had no version check at all and could push a
+  # mismatched image before `release`'s own check (further down) ever ran.
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sanity-check tag matches info.json
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          VERSION=$(jq -r .version companion-mod/info.json)
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::tag v${TAG} does not match companion-mod/info.json version ${VERSION}"
+            exit 1
+          fi
+
   # Container images build in parallel — they don't need the changelog notes.
   images:
+    needs: validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +60,7 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/open-discord-bridge-sidecar:${{ github.ref_name }}
 
   release:
+    needs: validate
     runs-on: ubuntu-latest
     env:
       # Hoisted to job scope so step-level `if:` conditions can see them.
@@ -66,14 +84,6 @@ jobs:
           echo "name=${NAME}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "folder=${NAME}_${VERSION}" >> "$GITHUB_OUTPUT"
-
-      - name: Sanity-check tag matches info.json
-        run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          if [ "$TAG" != "${{ steps.info.outputs.version }}" ]; then
-            echo "::error::tag v${TAG} does not match companion-mod/info.json version ${{ steps.info.outputs.version }}"
-            exit 1
-          fi
 
       # Tag of the most recent PUBLISHED release (not just the most recent tag —
       # a tag can exist without a release if an earlier run failed). Excludes the
@@ -152,7 +162,9 @@ jobs:
           FOLDER="${{ steps.info.outputs.folder }}"
           mkdir -p "build/${FOLDER}"
           cp companion-mod/info.json companion-mod/control.lua companion-mod/changelog.txt companion-mod/thumbnail.png "build/${FOLDER}/"
-          [ -f companion-mod/README.md ] && cp companion-mod/README.md "build/${FOLDER}/"
+          if [ -f companion-mod/README.md ]; then
+            cp companion-mod/README.md "build/${FOLDER}/"
+          fi
           (cd build && zip -r "../${FOLDER}.zip" "${FOLDER}")
 
       - name: Build cross-platform binaries (bridge + wizard)
@@ -168,6 +180,11 @@ jobs:
                 -o "../dist/odb-wizard-$os-$arch$ext" ./cmd/wizard )
           done
 
+      - name: Generate checksums
+        run: |
+          sha256sum dist/* "${{ steps.info.outputs.folder }}.zip" > checksums.txt
+          cat checksums.txt
+
       - name: Create GitHub Release
         id: release
         uses: softprops/action-gh-release@v2
@@ -177,6 +194,7 @@ jobs:
             deploy/pterodactyl-egg.json
             bridge/bridge.yaml.example
             ${{ steps.info.outputs.folder }}.zip
+            checksums.txt
           # Curated notes from changelog.txt (canonical for this project).
           body: ${{ steps.notes.outputs.notes }}
 
