@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"golang.org/x/term"
+
 	"github.com/bits-orio/open-discord-bridge/wizard"
 )
 
@@ -25,7 +27,7 @@ func main() {
 	// 1. Token (env or prompt) → validate.
 	token := os.Getenv("DISCORD_BOT_TOKEN")
 	if token == "" {
-		token = prompt(in, "Paste your Discord bot token")
+		token = promptSecret(in, "Paste your Discord bot token")
 	}
 	bot, err := wizard.Connect(token)
 	if err != nil {
@@ -70,7 +72,7 @@ func main() {
 		if useKey == "y" || useKey == "yes" {
 			sftpKeyPath = prompt(in, "Path to private key file")
 		} else {
-			sftpPassword = prompt(in, "SFTP password")
+			sftpPassword = promptSecret(in, "SFTP password")
 		}
 		sftpKnownHosts = promptDefault(in, "known_hosts file (blank to skip host-key check)", "")
 		eventsLabel = "Events file path (relative to SFTP root)"
@@ -80,7 +82,7 @@ func main() {
 		eventsDefault = "${HOME}/factorio/script-output/open-discord-bridge/events.jsonl"
 	}
 	events := promptDefault(in, eventsLabel, eventsDefault)
-	rconPass := prompt(in, "Factorio RCON password")
+	rconPass := promptSecret(in, "Factorio RCON password")
 
 	// 6. Write config + env.
 	yamlText, err := wizard.RenderBridgeYAML(wizard.ConfigParams{
@@ -96,9 +98,12 @@ func main() {
 	cfgPath := filepath.Join(*out, "bridge.yaml")
 	envPath := filepath.Join(*out, ".env")
 	writeFile(in, cfgPath, yamlText, 0o644)
-	envContent := fmt.Sprintf("DISCORD_BOT_TOKEN=%s\nFACTORIO_RCON_PASSWORD=%s\n", token, rconPass)
+	// Values are single-quoted (shQuote) so start-*.sh can safely `source`/`.` this file —
+	// an unquoted secret containing `;`, `$`, backticks, or spaces would otherwise break
+	// shell parsing or get executed.
+	envContent := fmt.Sprintf("DISCORD_BOT_TOKEN=%s\nFACTORIO_RCON_PASSWORD=%s\n", shQuote(token), shQuote(rconPass))
 	if sftpPassword != "" {
-		envContent += fmt.Sprintf("SFTP_PASSWORD=%s\n", sftpPassword)
+		envContent += fmt.Sprintf("SFTP_PASSWORD=%s\n", shQuote(sftpPassword))
 	}
 	writeFile(in, envPath, envContent, 0o600)
 
@@ -149,6 +154,27 @@ func prompt(in *bufio.Scanner, label string) string {
 		os.Exit(1)
 	}
 	return strings.TrimSpace(in.Text())
+}
+
+// promptSecret behaves like prompt, but suppresses terminal echo while stdin is an
+// interactive TTY, so a bot token or RCON/SFTP password isn't left sitting in the
+// terminal's scrollback. Falls back to a plain (unmasked) read when stdin isn't a
+// terminal — piped/scripted input (tests, automation) can't be echoed by a terminal
+// anyway, and there's no TTY to put into raw mode.
+func promptSecret(in *bufio.Scanner, label string) string {
+	fmt.Printf("%s: ", label)
+	if !term.IsTerminal(int(os.Stdin.Fd())) {
+		if !in.Scan() {
+			os.Exit(1)
+		}
+		return strings.TrimSpace(in.Text())
+	}
+	b, err := term.ReadPassword(int(os.Stdin.Fd()))
+	fmt.Println() // ReadPassword swallows the Enter keypress; keep prompts on their own line
+	if err != nil {
+		os.Exit(1)
+	}
+	return strings.TrimSpace(string(b))
 }
 
 func promptDefault(in *bufio.Scanner, label, def string) string {

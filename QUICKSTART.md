@@ -82,6 +82,11 @@ factorio --start-server my-save.zip \
 
 Note the **port** and **password** — you'll give them to the bridge next.
 
+> **⚠️ If the bridge runs on a different machine than Factorio**, don't point it at
+> Factorio's RCON port over the open internet — RCON is unencrypted, so the password and
+> every command would be readable in transit. Use an SSH tunnel or VPN instead. See
+> [DEPLOYMENT.md §6 Security](DEPLOYMENT.md#6-security) for details.
+
 ---
 
 ## 5. Configure the bridge

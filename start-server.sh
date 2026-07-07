@@ -47,6 +47,13 @@ if [[ ! -f "$SAVE" ]]; then
 fi
 
 echo "Starting Factorio server (RCON 127.0.0.1:$RCON_PORT) ..."
+# NOTE on RCON_PASSWORD below: Factorio's own server binary only accepts the RCON password
+# as a --rcon-password CLI argument (verified against `factorio --help` — there's no env-var
+# or file-based alternative), so it's unavoidably visible to any local user via `ps` for as
+# long as this process runs. This is a Factorio engine limitation, not something ODB's
+# scripts can route around. If this host is shared with untrusted local users, mitigate with
+# the kernel's `hidepid=2` /proc mount option (Linux) so other users can't read another
+# user's argv at all, or run Factorio under its own dedicated OS user.
 exec "$FACTORIO_BIN" \
     --start-server "$SAVE" \
     --mod-directory "$MODS" \

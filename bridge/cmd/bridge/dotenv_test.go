@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -46,4 +50,79 @@ func TestLoadDotEnv(t *testing.T) {
 
 func TestLoadDotEnvMissing(t *testing.T) {
 	loadDotEnv(t.TempDir()) // no .env present — must be a silent no-op, not a panic/error
+}
+
+// TestLoadDotEnvSingleQuotedEscaping mirrors the format the setup wizard's shQuote writes
+// (see wizard/cmd/wizard/envfile.go), so this loader and bash agree on the value when a
+// secret contains a single quote, '$', ';', or a backtick.
+func TestLoadDotEnvSingleQuotedEscaping(t *testing.T) {
+	dir := t.TempDir()
+	secret := `it's a $ecret; with ` + "`backticks`"
+	// Same encoding as shQuote: wrap in '...', escaping embedded ' as '\''.
+	encoded := "'" + strings.ReplaceAll(secret, "'", `'\''`) + "'"
+	content := "FACTORIO_RCON_PASSWORD=" + encoded + "\n"
+	if err := os.WriteFile(filepath.Join(dir, ".env"), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	os.Unsetenv("FACTORIO_RCON_PASSWORD")
+	t.Cleanup(func() { os.Unsetenv("FACTORIO_RCON_PASSWORD") })
+
+	loadDotEnv(dir)
+
+	if got := os.Getenv("FACTORIO_RCON_PASSWORD"); got != secret {
+		t.Errorf("FACTORIO_RCON_PASSWORD = %q, want %q", got, secret)
+	}
+}
+
+func TestLoadDotEnvWarnsOnPermissiveMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX file mode bits don't apply on Windows")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	if err := os.WriteFile(path, []byte("ODB_UNUSED_PERM_TEST=x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// os.WriteFile's mode is subject to umask; force the exact mode we're testing.
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv("ODB_UNUSED_PERM_TEST")
+	t.Cleanup(func() { os.Unsetenv("ODB_UNUSED_PERM_TEST") })
+
+	var buf bytes.Buffer
+	orig := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(orig) })
+
+	loadDotEnv(dir)
+
+	if got := buf.String(); !bytes.Contains([]byte(got), []byte("chmod 600")) {
+		t.Errorf("expected a chmod 600 warning for a group/world-readable .env, got log output: %q", got)
+	}
+}
+
+func TestLoadDotEnvNoWarningOnStrictMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX file mode bits don't apply on Windows")
+	}
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".env")
+	if err := os.WriteFile(path, []byte("ODB_UNUSED_PERM_TEST2=x\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	os.Unsetenv("ODB_UNUSED_PERM_TEST2")
+	t.Cleanup(func() { os.Unsetenv("ODB_UNUSED_PERM_TEST2") })
+
+	var buf bytes.Buffer
+	orig := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(orig) })
+
+	loadDotEnv(dir)
+
+	if got := buf.String(); bytes.Contains([]byte(got), []byte("chmod 600")) {
+		t.Errorf("did not expect a permission warning for a 0600 .env, got log output: %q", got)
+	}
 }

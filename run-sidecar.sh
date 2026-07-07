@@ -10,6 +10,12 @@
 #   run-sidecar.sh /opt/factorio/bin/x64/factorio --start-server /data/save.zip \
 #       --rcon-port 27015 --rcon-password "$FACTORIO_RCON_PASSWORD"
 #
+# NOTE: --rcon-password is Factorio's own server binary's only way to take an RCON
+# password — it has no env-var or file-based alternative, so it's visible via `ps` to any
+# local user on this host for as long as the process runs. In a single-tenant container
+# (the usual case for a sidecar) that's normally fine; on a shared host, use the kernel's
+# `hidepid=2` /proc mount option or an isolated OS user to restrict who can read it.
+#
 # Requires the bridge binary present (BRIDGE_BIN) and configured (BRIDGE_CONFIG file, or
 # env-var config mode if the file is absent — handy for panels). Bridge logs go to this
 # process's stdout, interleaved with Factorio; redirect the bridge below if you want a
