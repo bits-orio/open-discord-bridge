@@ -669,8 +669,10 @@ AleForge can begin portal work against the Control API spec.
 1. **Mod Portal name** — reserve early; carries the brand permanently. Should be short
    and not collide with existing community bridges.
 
-2. **License** — Apache 2.0 (patent grant matters for AleForge integration) vs MIT.
-   Lean Apache 2.0. Verify Mod Portal license requirements for the companion mod.
+2. **License** — RESOLVED 2026-08-31: **MIT**. Apache 2.0 was the early lean, for its
+   patent grant around the AleForge integration, but the mod portal had listed this mod
+   as MIT since first publish and the whole family standardised on MIT. LICENSE, README,
+   the portal metadata and the control-API spec all say MIT.
 
 3. **Mod-bridge version compatibility handshake** — bridge checks mod version on startup
    via RCON and refuses if below `required_mod_version`. Mismatches must surface clearly

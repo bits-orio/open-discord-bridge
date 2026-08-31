@@ -11,7 +11,7 @@ info:
     Implementation status (MVP): GET /v1/status is implemented. The remaining endpoints
     are part of the contract but currently return 501 Not Implemented.
   license:
-    name: Apache-2.0
+    name: MIT
 
 servers:
   - url: http://127.0.0.1:7777
