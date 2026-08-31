@@ -6,7 +6,7 @@ their own events into it**.
 [![mod portal](https://img.shields.io/badge/Factorio%20Mod%20Portal-open--discord--bridge-5b91b6?logo=factorio)](https://mods.factorio.com/mod/open-discord-bridge)
 [![discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/tWz4FT74pH)
 [![ci](https://github.com/bits-orio/open-discord-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/bits-orio/open-discord-bridge/actions/workflows/ci.yml)
-[![license: GPLv3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Factorio 2.0](https://img.shields.io/badge/Factorio-2.0-orange.svg)
 
 Open Discord Bridge relays in-game chat and events (joins, deaths, rockets, research, …) to
@@ -160,4 +160,4 @@ mod portal. See the **bump-version** flow in [DEPLOYMENT.md](DEPLOYMENT.md#7-rel
 
 ## License
 
-[GNU GPL v3](LICENSE) © bits-orio
+[MIT](LICENSE) © bits-orio
