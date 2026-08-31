@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.13
+Date: 2026-08-31
+  Info:
+    - Relicensed from GPLv3 to MIT, matching the licence the mod portal has listed since this mod
+      was first published. The repo had shipped a GPLv3 LICENSE file, which contradicted it.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.12
 Date: 2026-07-03
   Changes:
