@@ -1,6 +1,6 @@
 # Open Discord Bridge
 
-Mirror chat and events between a Factorio server and Discord — and let **other mods plug
+Mirror chat and events between a Factorio server and Discord, and let **other mods plug
 their own events into it**.
 
 [![mod portal](https://img.shields.io/badge/Factorio%20Mod%20Portal-open--discord--bridge-5b91b6?logo=factorio)](https://mods.factorio.com/mod/open-discord-bridge)
@@ -18,37 +18,37 @@ code.
 
 [mts]: https://github.com/bits-orio/multi-team-support
 
-## Hosted on AleForge — first-class integration
+## Hosted on AleForge: first-class integration
 
 > A big thank-you to **[AleForge](https://aleforge.net/factorio/)**, the first hosting
 > provider to ship Open Discord Bridge as a first-class integration. On their Factorio
 > servers the bridge is built into the panel: toggle it on, paste your bot token and
-> channel ID, reinstall — done. No shell, no config files. Special thanks to **Wraith**
-> from the AleForge team for the patience and the many rounds of debugging it took to get
-> the integration right end to end. Others will follow; AleForge was first.
+> channel ID, reinstall, and you are done. No shell, no config files. Special thanks to
+> **Wraith** from the AleForge team for the patience and the many rounds of debugging it
+> took to get the integration right end to end. Others will follow; AleForge was first.
 >
 > Hosting provider interested in offering ODB on your platform? Reach out to **bitsorio**
-> on the [Discord server](https://discord.gg/tWz4FT74pH) — happy to help you integrate.
+> on the [Discord server](https://discord.gg/tWz4FT74pH). Happy to help you integrate.
 
 If your server runs on AleForge, the illustrated, screenshot-by-screenshot
 **[AleForge setup guide](docs/aleforge/SETUP.md)** takes you from "no bot" to verified
-two-way chat in about 10–15 minutes.
+two-way chat in 10 to 15 minutes.
 
 ## Features
 
-- **Two-way chat** — game chat → Discord, Discord → game (over RCON, achievement-safe).
-- **Baseline events with no setup** — chat, join/leave, deaths, rocket launches, research,
-  server up — captured by the companion mod itself, so it works on a vanilla server.
-- **Integrator events** — other mods push their own events (and receive inbound Discord
+- **Two-way chat.** Game chat → Discord, Discord → game (over RCON, achievement-safe).
+- **Baseline events with no setup.** Chat, join/leave, deaths, rocket launches, research
+  and server up are captured by the companion mod itself, so it works on a vanilla server.
+- **Integrator events.** Other mods push their own events (and receive inbound Discord
   messages) through the frozen `open-discord-bridge-v1` remote interface. An integrator can
   also take over a baseline event to enrich it (e.g. team-aware research).
-- **Channel routing** — map events to channels by exact key, namespace glob (`mts.*`), or
+- **Channel routing** maps events to channels by exact key, namespace glob (`mts.*`), or
   catch-all.
-- **Configurable Discord → RCON commands** — public or admin-only, single- or multi-line,
-  with argument interpolation; optionally exposed as Discord slash commands.
-- **Player linking** — link a Discord account to an in-game player, with an optional synced
-  role and nickname; linked players' names are tinted in-game.
-- **Optional polish** — colored category labels for integrator events, connect/disconnect
+- **Configurable Discord → RCON commands**: public or admin-only, single- or multi-line,
+  with argument interpolation, and optionally exposed as Discord slash commands.
+- **Player linking.** Link a Discord account to an in-game player, with an optional synced
+  role and nickname. Linked players' names are tinted in-game.
+- **Optional polish.** Colored category labels for integrator events, connect/disconnect
   announcements, a startup permission preflight that tells you exactly what's missing, and
   an optional HTTP control API.
 
@@ -61,29 +61,31 @@ Factorio  ──(events.jsonl)──▶  Bridge (Go)  ──▶  Discord
 ```
 
 - **Companion mod** (`companion-mod/`, a small Factorio 2.0 Lua mod) writes events to a
-  JSONL file and owns the `open-discord-bridge-v1` interface for other mods. Required —
-  install it from the in-game mod browser or the
+  JSONL file and owns the `open-discord-bridge-v1` interface for other mods. It is
+  required, so install it from the in-game mod browser or the
   [Factorio Mod Portal](https://mods.factorio.com/mod/open-discord-bridge).
 - **Bridge** (`bridge/`, a single Go binary) tails that file, posts to Discord, and relays
   Discord messages back via RCON. One process per server.
-- **Wizard** (`wizard/`) — an optional setup CLI (and importable library for hosting panels)
-  that creates the bot invite, picks a channel, and writes the config.
+- **Wizard** (`wizard/`) is an optional setup CLI that creates the bot invite, picks a
+  channel, and writes the config. Hosting panels can import it as a library instead.
 
 Events stream over a **local file** (bridge on the same host) or **SFTP** (remote host);
 RCON is always used for inbound delivery.
 
 ## Quick start
 
-**Most people — download the binary (no build needed).** Grab `odb-bridge`, `odb-wizard`,
-the companion-mod zip, and `bridge.yaml.example` from the
+**Most people want the prebuilt binary, with no build step.** Grab `odb-bridge`,
+`odb-wizard`, the companion-mod zip, and `bridge.yaml.example` from the
 [Releases](https://github.com/bits-orio/open-discord-bridge/releases) page, then follow the
 step-by-step **[QUICKSTART.md](QUICKSTART.md)**.
 
-**On AleForge?** Follow the illustrated **[AleForge setup guide](docs/aleforge/SETUP.md)**
-— bot creation to verified two-way chat in ~10–15 minutes, no coding required.
+**On AleForge?** Follow the illustrated **[AleForge setup guide](docs/aleforge/SETUP.md)**.
+It runs from bot creation to verified two-way chat in roughly 10 to 15 minutes, with no
+coding required.
 
-**On another managed host (Pterodactyl / …)?** You don't create a config file at all —
-configure via panel variables (env-var mode). See [DEPLOYMENT.md](DEPLOYMENT.md).
+**On another managed host (Pterodactyl / …)?** You don't create a config file at all.
+Configure the bridge with panel variables instead (env-var mode). See
+[DEPLOYMENT.md](DEPLOYMENT.md).
 
 **From source (developers).** You need Go 1.23+ and a Factorio headless server:
 
@@ -94,13 +96,13 @@ configure via panel variables (env-var mode). See [DEPLOYMENT.md](DEPLOYMENT.md)
 ```
 
 Prefer to wire it by hand? Copy `bridge/bridge.yaml.example` → `bridge/bridge.yaml` and
-`bridge/.env.example` → `bridge/.env` (token + RCON password go in `.env` — **never** in
+`bridge/.env.example` → `bridge/.env` (token + RCON password go in `.env`, **never** in
 `bridge.yaml`), then `./start-bridge.sh`.
 
-Discord bot permissions: **View Channels, Send Messages, Read Message History**, and — only
-if you use linked-player role/nickname — **Manage Roles + Manage Nicknames** (the bot's role
-must sit above the linked role). The bridge logs (and posts) a warning on startup if any are
-missing.
+Discord bot permissions: **View Channels, Send Messages, Read Message History**. If you use
+the linked-player role and nickname features, add **Manage Roles + Manage Nicknames** too,
+and keep the bot's role above the linked role. The bridge logs (and posts) a warning on
+startup if any are missing.
 
 ## Deployment
 
@@ -128,9 +130,9 @@ if remote.interfaces["open-discord-bridge-v1"] then
 end
 ```
 
-The full interface — declaring an event catalog, taking over a baseline event, subscribing
-to inbound Discord messages, and the emoji/markdown rules — is documented in
-**[companion-mod/README.md](companion-mod/README.md)**.
+The full interface is documented in **[companion-mod/README.md](companion-mod/README.md)**:
+declaring an event catalog, taking over a baseline event, subscribing to inbound Discord
+messages, and the emoji/markdown rules.
 
 ## Project layout
 
@@ -145,11 +147,11 @@ to inbound Discord messages, and the emoji/markdown rules — is documented in
 
 ## Docs
 
-- **[docs/aleforge/SETUP.md](docs/aleforge/SETUP.md)** — illustrated end-user setup guide for AleForge servers.
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** — deployment models, env vars, control API, releasing.
-- **[companion-mod/README.md](companion-mod/README.md)** — the integrator API.
-- **[TESTING.md](TESTING.md)** — end-to-end verification checklist.
-- **[PLAN.md](PLAN.md)** — design rationale and roadmap.
+- **[docs/aleforge/SETUP.md](docs/aleforge/SETUP.md)** is the illustrated end-user setup guide for AleForge servers.
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** covers deployment models, env vars, the control API, and releasing.
+- **[companion-mod/README.md](companion-mod/README.md)** documents the integrator API.
+- **[TESTING.md](TESTING.md)** is the end-to-end verification checklist.
+- **[PLAN.md](PLAN.md)** holds the design rationale and roadmap.
 
 ## Releasing
 
