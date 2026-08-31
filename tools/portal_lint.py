@@ -56,6 +56,20 @@ def main():
 
     # Every page in the family carries the same two badges, so a reader landing
     # on any mod finds the repo and the community in the same place.
+    # An unprompted plea not to harass makes a reader assume there is a reason
+    # and bounce. The AI disclosure alone does not invite that.
+    if ("Developed with AI coding assistants alongside human review and in-game testing."
+            not in desc):
+        errors.append("the AI disclosure sentence is missing or reworded — it must be "
+                      "identical across every mod in the family")
+
+    lowered = desc.lower()
+    for plea in ("keep the hate off", "human on the other side", "don't be rude",
+                 "do not be rude", "please keep it kind", "anti-human"):
+        if plea in lowered:
+            errors.append(f"anti-harassment plea in the description: {plea!r} — "
+                          "the AI disclosure stands alone")
+
     if "img.shields.io/badge/Discord" not in desc:
         errors.append("missing the Discord badge")
     if "img.shields.io/badge/GitHub" not in desc:

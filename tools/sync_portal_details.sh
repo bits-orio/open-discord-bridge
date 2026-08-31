@@ -1,30 +1,49 @@
 #!/usr/bin/env bash
-# Push the storefront (docs/portal.md) and its metadata (tools/portal_meta.json)
-# to the mod portal. Partial update: only the fields sent here change, so the
-# gallery, title and release history are untouched.
+# Deploy the whole mod-portal page from files tracked in this repo, so the page
+# is reproducible: if anyone edits it by hand on the site, re-running this puts
+# it back exactly as the repo describes it.
 #
-# Usage: tools/sync_portal_details.sh [--dry-run]
-# Env:   FACTORIO_API_KEY (required) — needs the "ModPortal: Edit Mods" scope,
-#        which is separate from the "Upload Mods" scope used for releases.
+#   docs/portal.md          -> description   (the storefront; README keeps the depth)
+#   docs/portal-faq.md      -> faq           (optional; skipped if absent)
+#   tools/portal_meta.json  -> title, summary, category, tags, license,
+#                              homepage, source_url, deprecated
+#
+# The gallery images and the thumbnail are NOT settable through the API and so
+# cannot be tracked here -- they stay manual on the site.
+#
+# Usage: tools/sync_portal_details.sh [--dry-run|--check]
+#   --dry-run  print what would be sent, send nothing
+#   --check    diff the live page against these files, send nothing (no key needed)
+# Env: FACTORIO_API_KEY -- needs the "ModPortal: Edit Mods" scope, which is
+#      separate from the "Upload Mods" scope used for releases.
 #
 # API: https://wiki.factorio.com/Mod_details_API  (POST /api/v2/mods/edit_details)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 command -v jq >/dev/null || { echo "jq required" >&2; exit 1; }
+META=tools/portal_meta.json
+MOD=$(jq -r '.mod // empty' "$META")
+[[ -n "$MOD" ]] || { echo "portal_meta.json has no \"mod\" field" >&2; exit 1; }
 
-# House rules are enforced here, not in review — a relative link on the portal
-# 404s silently and nobody notices for weeks.
+if [[ "${1:-}" == "--check" ]]; then
+    exec python3 tools/portal_check.py
+fi
+
+# House rules are enforced here, not in review: a relative link 404s silently on
+# the portal and nobody notices for weeks.
 python3 tools/portal_lint.py
 
-META=tools/portal_meta.json
-MOD=$(jq -r .mod "$META")
-
 ARGS=( -F "mod=${MOD}" -F "description=<docs/portal.md" )
-for field in summary category license homepage source_url; do
+[[ -f docs/portal-faq.md ]] && ARGS+=( -F "faq=<docs/portal-faq.md" )
+
+for field in title summary category license homepage source_url; do
     value=$(jq -r --arg f "$field" '.[$f] // empty' "$META")
     [[ -n "$value" ]] && ARGS+=( --form-string "${field}=${value}" )
 done
+# deprecated is a bool: only send it when explicitly set.
+dep=$(jq -r '.deprecated // empty' "$META")
+[[ -n "$dep" ]] && ARGS+=( --form-string "deprecated=${dep}" )
 # tags is multi-valued: one repeated form field per tag.
 while read -r tag; do
     [[ -n "$tag" ]] && ARGS+=( --form-string "tags=${tag}" )
@@ -46,7 +65,7 @@ echo "edit_details HTTP ${HTTP}"
 echo "$BODY"
 
 if [[ "$HTTP" -lt 200 || "$HTTP" -ge 300 ]]; then
-    echo "edit_details failed — a 403 usually means the API key lacks the" >&2
+    echo "edit_details failed -- a 403 usually means the API key lacks the" >&2
     echo "'ModPortal: Edit Mods' scope (the release key only has Upload)." >&2
     exit 1
 fi
