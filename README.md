@@ -7,7 +7,7 @@ their own events into it**.
 [![discord](https://img.shields.io/badge/Discord-join%20the%20server-5865F2?logo=discord&logoColor=white)](https://discord.gg/tWz4FT74pH)
 [![ci](https://github.com/bits-orio/open-discord-bridge/actions/workflows/ci.yml/badge.svg)](https://github.com/bits-orio/open-discord-bridge/actions/workflows/ci.yml)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Factorio 2.0](https://img.shields.io/badge/Factorio-2.0-orange.svg)
+![Factorio 2.1](https://img.shields.io/badge/Factorio-2.1-orange.svg)
 
 Open Discord Bridge relays in-game chat and events (joins, deaths, rockets, research, …) to
 a Discord channel, and delivers Discord messages back into the game. It's built to be
@@ -60,7 +60,7 @@ Factorio  ──(events.jsonl)──▶  Bridge (Go)  ──▶  Discord
    └────────────(RCON)────────────┘   ◀── Discord messages / commands
 ```
 
-- **Companion mod** (`companion-mod/`, a small Factorio 2.0 Lua mod) writes events to a
+- **Companion mod** (`companion-mod/`, a small Factorio 2.1 Lua mod) writes events to a
   JSONL file and owns the `open-discord-bridge-v1` interface for other mods. It is
   required, so install it from the in-game mod browser or the
   [Factorio Mod Portal](https://mods.factorio.com/mod/open-discord-bridge).
